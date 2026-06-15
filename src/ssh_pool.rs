@@ -31,8 +31,8 @@ pub struct SshConnection {
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct ConnectionStatus {
     pub host: String,
-    pub elapsed_secs: u64,
-    pub remaining_secs: u64,
+    pub last_used_timestamp: u64,
+    pub idle_timeout_secs: u64,
 }
 
 pub struct ConnectionPool {
@@ -65,15 +65,20 @@ impl ConnectionPool {
                     }
                 });
 
+                let now_unix = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+
                 let statuses: Vec<ConnectionStatus> = map
                     .iter()
                     .map(|(host, conn)| {
                         let elapsed = now.duration_since(conn.last_used);
-                        let remaining = idle_timeout.saturating_sub(elapsed);
+                        let last_used_unix = now_unix.saturating_sub(elapsed.as_secs());
                         ConnectionStatus {
                             host: host.clone(),
-                            elapsed_secs: elapsed.as_secs(),
-                            remaining_secs: remaining.as_secs(),
+                            last_used_timestamp: last_used_unix,
+                            idle_timeout_secs: idle_timeout.as_secs(),
                         }
                     })
                     .collect();
@@ -89,15 +94,20 @@ impl ConnectionPool {
     async fn save_status(&self) {
         let map = self.connections.lock().await;
         let now = Instant::now();
+        let now_unix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
         let statuses: Vec<ConnectionStatus> = map
             .iter()
             .map(|(host, conn)| {
                 let elapsed = now.duration_since(conn.last_used);
-                let remaining = self.idle_timeout.saturating_sub(elapsed);
+                let last_used_unix = now_unix.saturating_sub(elapsed.as_secs());
                 ConnectionStatus {
                     host: host.clone(),
-                    elapsed_secs: elapsed.as_secs(),
-                    remaining_secs: remaining.as_secs(),
+                    last_used_timestamp: last_used_unix,
+                    idle_timeout_secs: self.idle_timeout.as_secs(),
                 }
             })
             .collect();

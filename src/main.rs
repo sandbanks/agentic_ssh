@@ -27,8 +27,8 @@ fn run_tui() -> anyhow::Result<()> {
     let path = std::path::Path::new("/Users/richard/projects/rust/agentic_ssh/pool_status.json");
 
     loop {
-        // Clear screen and move cursor to top-left
-        print!("\x1B[2J\x1B[1;1H");
+        // Position cursor at home (1,1) and clear everything below it
+        print!("\x1B[H\x1B[J");
 
         println!("┌──────────────────────────────────────────────────────────┐");
         println!("│             agentic_ssh Connection Pool                  │");
@@ -36,30 +36,56 @@ fn run_tui() -> anyhow::Result<()> {
         println!("│ {:<15} │ {:<12} │ {:<12} │ {:<10} │", "Host", "Last Used", "Auto-Close", "Status");
         println!("├──────────────────────────────────────────────────────────┤");
 
-        let mut active_count = 0;
-        if path.exists() {
-            if let Ok(file) = std::fs::File::open(path) {
-                if let Ok(statuses) = serde_json::from_reader::<_, Vec<ssh_pool::ConnectionStatus>>(file) {
-                    active_count = statuses.len();
-                    for status in statuses {
-                        let last_used_str = format!("{}s ago", status.elapsed_secs);
-                        let auto_close_str = format!("{}s left", status.remaining_secs);
-                        // Print using green color for active status
-                        println!(
-                            "│ {:<15} │ {:<12} │ {:<12} │ \x1B[32m{:<10}\x1B[0m │",
-                            status.host, last_used_str, auto_close_str, "Active"
-                        );
+        let mut daemon_active = false;
+        if let Ok(metadata) = std::fs::metadata(path) {
+            if let Ok(modified) = metadata.modified() {
+                if let Ok(elapsed) = modified.elapsed() {
+                    if elapsed.as_secs() < 15 {
+                        daemon_active = true;
                     }
                 }
             }
         }
 
-        if active_count == 0 {
+        let mut active_count = 0;
+        if daemon_active && path.exists() {
+            let now_unix = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+
+            if let Ok(file) = std::fs::File::open(path) {
+                if let Ok(statuses) = serde_json::from_reader::<_, Vec<ssh_pool::ConnectionStatus>>(file) {
+                    for status in statuses {
+                        let elapsed_secs = now_unix.saturating_sub(status.last_used_timestamp);
+                        let remaining_secs = status.idle_timeout_secs.saturating_sub(elapsed_secs);
+
+                        if remaining_secs > 0 {
+                            active_count += 1;
+                            let last_used_str = format!("{}s ago", elapsed_secs);
+                            let auto_close_str = format!("{}s left", remaining_secs);
+                            println!(
+                                "│ {:<15} │ {:<12} │ {:<12} │ \x1B[32m{:<10}\x1B[0m │",
+                                status.host, last_used_str, auto_close_str, "Active"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        if !daemon_active {
+            println!("│ {:^54} │", "\x1B[31m[Daemon Inactive / Offline]\x1B[0m");
+        } else if active_count == 0 {
             println!("│ {:^54} │", "No active connections in the pool");
         }
 
         println!("└──────────────────────────────────────────────────────────┘");
-        println!("Active connections: {}", active_count);
+        if daemon_active {
+            println!("Active connections: {}", active_count);
+        } else {
+            println!("Active connections: 0 (Daemon offline)");
+        }
         println!("(Auto-refreshing every 1 second)");
 
         let _ = std::io::Write::flush(&mut std::io::stdout());
