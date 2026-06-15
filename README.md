@@ -28,6 +28,10 @@ Make sure you have Rust and Cargo installed (or use the Nix environment).
    ```
    The compiled binary will be located at:
    `target/release/agentic_ssh`
+3. Copy the binary to a location in your PATH, e.g.:
+   ```bash
+   sudo cp target/release/agentic_ssh /usr/local/bin/
+   ```
 
 ---
 
@@ -42,13 +46,12 @@ On macOS, edit `~/Library/Application Support/Claude/claude_desktop_config.json`
 {
   "mcpServers": {
     "agentic_ssh": {
-      "command": "/Users/richard/projects/rust/agentic_ssh/target/release/agentic_ssh",
+      "command": "/usr/local/bin/agentic_ssh",
       "args": []
     }
   }
 }
 ```
-*(Make sure to update the absolute path to point to your compiled binary location).*
 
 ---
 
@@ -97,4 +100,3 @@ cargo run --release -- tui
 # or:
 ./target/release/agentic_ssh tui
 ```
-

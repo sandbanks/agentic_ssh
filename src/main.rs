@@ -27,16 +27,12 @@ fn run_tui() -> anyhow::Result<()> {
     let path = std::path::Path::new("/Users/richard/projects/rust/agentic_ssh/pool_status.json");
 
     loop {
-        let mut daemon_active = false;
-        if let Ok(metadata) = std::fs::metadata(path) {
-            if let Ok(modified) = metadata.modified() {
-                if let Ok(elapsed) = modified.elapsed() {
-                    if elapsed.as_secs() < 15 {
-                        daemon_active = true;
-                    }
-                }
-            }
-        }
+        let daemon_active = std::fs::metadata(path)
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.elapsed().ok())
+            .map(|e| e.as_secs() < 15)
+            .unwrap_or(false);
 
         let mut active_connections = Vec::new();
         let mut max_host_len = 30; // Default / minimum Host column width
@@ -47,18 +43,19 @@ fn run_tui() -> anyhow::Result<()> {
                 .unwrap_or_default()
                 .as_secs();
 
-            if let Ok(file) = std::fs::File::open(path) {
-                if let Ok(statuses) = serde_json::from_reader::<_, Vec<ssh_pool::ConnectionStatus>>(file) {
-                    for status in statuses {
-                        let elapsed_secs = now_unix.saturating_sub(status.last_used_timestamp);
-                        let remaining_secs = status.idle_timeout_secs.saturating_sub(elapsed_secs);
+            if let Some(statuses) = std::fs::File::open(path)
+                .ok()
+                .and_then(|file| serde_json::from_reader::<_, Vec<ssh_pool::ConnectionStatus>>(file).ok())
+            {
+                for status in statuses {
+                    let elapsed_secs = now_unix.saturating_sub(status.last_used_timestamp);
+                    let remaining_secs = status.idle_timeout_secs.saturating_sub(elapsed_secs);
 
-                        if remaining_secs > 0 {
-                            let last_used_str = format!("{}s ago", elapsed_secs);
-                            let auto_close_str = format!("{}s left", remaining_secs);
-                            max_host_len = max_host_len.max(status.host.len());
-                            active_connections.push((status.host, last_used_str, auto_close_str));
-                        }
+                    if remaining_secs > 0 {
+                        let last_used_str = format!("{}s ago", elapsed_secs);
+                        let auto_close_str = format!("{}s left", remaining_secs);
+                        max_host_len = max_host_len.max(status.host.len());
+                        active_connections.push((status.host, last_used_str, auto_close_str));
                     }
                 }
             }

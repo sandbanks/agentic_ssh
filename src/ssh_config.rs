@@ -5,13 +5,10 @@ use anyhow::{Context, Result};
 use glob::glob;
 use ssh2_config_rs::SshConfig;
 
-/// Expands the tilde `~` prefix in a path to the user's home directory.
 pub fn expand_path(path: &Path) -> PathBuf {
     let path_str = path.to_string_lossy();
-    if path_str.starts_with("~/") {
-        if let Some(home_dir) = home::home_dir() {
-            return home_dir.join(&path_str[2..]);
-        }
+    if let (Some(stripped), Some(home_dir)) = (path_str.strip_prefix("~/"), home::home_dir()) {
+        return home_dir.join(stripped);
     }
     path.to_path_buf()
 }
@@ -73,12 +70,10 @@ fn find_hosts_in_file(path: &Path, ssh_dir: &Path, visited: &mut Vec<PathBuf>) -
             };
 
             // Resolve glob pattern
-            if let Some(glob_str) = target_path.to_str() {
-                if let Ok(entries) = glob(glob_str) {
-                    for entry in entries.flatten() {
-                        if let Ok(sub_hosts) = find_hosts_in_file(&entry, ssh_dir, visited) {
-                            hosts.extend(sub_hosts);
-                        }
+            if let Some(entries) = target_path.to_str().and_then(|s| glob(s).ok()) {
+                for entry in entries.flatten() {
+                    if let Ok(sub_hosts) = find_hosts_in_file(&entry, ssh_dir, visited) {
+                        hosts.extend(sub_hosts);
                     }
                 }
             }

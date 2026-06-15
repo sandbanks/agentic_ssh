@@ -1,0 +1,2 @@
+# Ignore false positive UUID in rust-guidelines.txt
+42c3952ad76aca96c2a677ff99ad4b0491f733a7:rust-guidelines.txt:generic-api-key:942

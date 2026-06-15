@@ -47,17 +47,20 @@ br sync --status      # Check sync status
 
 **Before ending any session, run this checklist:**
 
-```bash
-git status              # Check what changed
-git add <files>         # Stage code changes
-br sync --flush-only    # Export beads changes to JSONL
-git commit -m "..."     # Commit everything
-git push                # Push to remote
-```
+1. **Static Verification**: Run `cargo clippy --all-targets` and fix any warnings to ensure compliance with the coding standards.
+2. **Commit Checklist**:
+   ```bash
+   git status              # Check what changed
+   git add <files>         # Stage code changes
+   br sync --flush-only    # Export beads changes to JSONL
+   git commit -m "..."     # Commit everything
+   git push                # Push to remote
+   ```
 
 ### Best Practices
 
 - Check `br ready` at session start to find available work
+- Consult and adhere to [rust-guidelines.txt](file:///Users/richard/projects/rust/agentic_ssh/rust-guidelines.txt) for project-wide coding standards (e.g. error handling, `mimalloc` usage, and static checking).
 - Update status as you work (in_progress → closed)
 - Create new issues with `br create` when you discover tasks
 - Use descriptive titles and set appropriate priority/type

@@ -126,7 +126,7 @@ impl ConnectionPool {
             match conn.handle.channel_open_session().await {
                 Ok(channel) => {
                     // It works! We can close this test channel immediately and return the handle.
-                    let _ = channel.close();
+                    let _ = channel.close().await;
                     conn.last_used = Instant::now();
                     let handle = Arc::clone(&conn.handle);
                     drop(map);
