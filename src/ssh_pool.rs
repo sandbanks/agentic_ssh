@@ -336,3 +336,28 @@ impl ConnectionPool {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    #[ignore]
+    async fn test_connect_long_hostname() {
+        let pool = ConnectionPool::new(Duration::from_secs(300));
+        
+        println!("CONNECTING TO LONG HOSTNAME...");
+        match pool.execute_command("fred-direct-with-more-words-than-you-need-to-test-with", "uptime && docker ps").await {
+            Ok((stdout, stderr, code)) => {
+                println!("SUCCESS: code={}, stdout={}, stderr={}", code, stdout, stderr);
+            }
+            Err(e) => {
+                println!("FAILED: {:#?}", e);
+            }
+        }
+        
+        println!("WAITING 15 SECONDS FOR TUI DISPLAY... (Watch the TUI!)");
+        tokio::time::sleep(Duration::from_secs(15)).await;
+    }
+}
+
+

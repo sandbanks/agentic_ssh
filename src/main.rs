@@ -27,15 +27,6 @@ fn run_tui() -> anyhow::Result<()> {
     let path = std::path::Path::new("/Users/richard/projects/rust/agentic_ssh/pool_status.json");
 
     loop {
-        // Position cursor at home (1,1) and clear everything below it
-        print!("\x1B[H\x1B[J");
-
-        println!("┌──────────────────────────────────────────────────────────┐");
-        println!("│             agentic_ssh Connection Pool                  │");
-        println!("├──────────────────────────────────────────────────────────┤");
-        println!("│ {:<15} │ {:<12} │ {:<12} │ {:<10} │", "Host", "Last Used", "Auto-Close", "Status");
-        println!("├──────────────────────────────────────────────────────────┤");
-
         let mut daemon_active = false;
         if let Ok(metadata) = std::fs::metadata(path) {
             if let Ok(modified) = metadata.modified() {
@@ -47,7 +38,9 @@ fn run_tui() -> anyhow::Result<()> {
             }
         }
 
-        let mut active_count = 0;
+        let mut active_connections = Vec::new();
+        let mut max_host_len = 30; // Default / minimum Host column width
+
         if daemon_active && path.exists() {
             let now_unix = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -61,28 +54,54 @@ fn run_tui() -> anyhow::Result<()> {
                         let remaining_secs = status.idle_timeout_secs.saturating_sub(elapsed_secs);
 
                         if remaining_secs > 0 {
-                            active_count += 1;
                             let last_used_str = format!("{}s ago", elapsed_secs);
                             let auto_close_str = format!("{}s left", remaining_secs);
-                            println!(
-                                "│ {:<15} │ {:<12} │ {:<12} │ \x1B[32m{:<10}\x1B[0m │",
-                                status.host, last_used_str, auto_close_str, "Active"
-                            );
+                            max_host_len = max_host_len.max(status.host.len());
+                            active_connections.push((status.host, last_used_str, auto_close_str));
                         }
                     }
                 }
             }
         }
 
+        // Position cursor at home (1,1) and clear everything below it
+        print!("\x1B[H\x1B[J");
+
+        let inner_width = max_host_len + 43; // max_host_len + 12 (Last Used) + 12 (Auto-Close) + 10 (Status) + 9 (separators/spaces)
+        let border_top = format!("┌{}┐", "─".repeat(inner_width));
+        let border_mid = format!("├{}┤", "─".repeat(inner_width));
+        let border_bot = format!("└{}┘", "─".repeat(inner_width));
+
+        println!("{}", border_top);
+        println!("│{:^width$}│", "agentic_ssh Connection Pool", width = inner_width);
+        println!("{}", border_mid);
+        println!(
+            "│ {:<width$} │ {:<12} │ {:<12} │ {:<10} │",
+            "Host", "Last Used", "Auto-Close", "Status",
+            width = max_host_len
+        );
+        println!("{}", border_mid);
+
         if !daemon_active {
-            println!("│ {:^54} │", "\x1B[31m[Daemon Inactive / Offline]\x1B[0m");
-        } else if active_count == 0 {
-            println!("│ {:^54} │", "No active connections in the pool");
+            let msg = "[Daemon Inactive / Offline]";
+            let padded = format!("{:^width$}", msg, width = inner_width);
+            let colored = padded.replace(msg, "\x1B[31m[Daemon Inactive / Offline]\x1B[0m");
+            println!("│{}│", colored);
+        } else if active_connections.is_empty() {
+            println!("│{:^width$}│", "No active connections in the pool", width = inner_width);
+        } else {
+            for (host, last_used_str, auto_close_str) in &active_connections {
+                println!(
+                    "│ {:<width$} │ {:<12} │ {:<12} │ \x1B[32m{:<10}\x1B[0m │",
+                    host, last_used_str, auto_close_str, "Active",
+                    width = max_host_len
+                );
+            }
         }
 
-        println!("└──────────────────────────────────────────────────────────┘");
+        println!("{}", border_bot);
         if daemon_active {
-            println!("Active connections: {}", active_count);
+            println!("Active connections: {}", active_connections.len());
         } else {
             println!("Active connections: 0 (Daemon offline)");
         }
