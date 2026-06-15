@@ -1,0 +1,226 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use anyhow::{anyhow, Context, Result};
+use tokio::sync::Mutex;
+use russh::client::Handle;
+
+use crate::ssh_config::{expand_path, load_ssh_config};
+
+#[derive(Clone)]
+pub struct ClientHandler;
+
+#[async_trait::async_trait]
+impl russh::client::Handler for ClientHandler {
+    type Error = russh::Error;
+
+    async fn check_server_key(
+        &mut self,
+        _server_public_key: &russh_keys::key::PublicKey,
+    ) -> Result<bool, Self::Error> {
+        // Accept all server keys for agentic SSH usage.
+        Ok(true)
+    }
+}
+
+pub struct SshConnection {
+    pub handle: Arc<Handle<ClientHandler>>,
+    pub last_used: Instant,
+}
+
+pub struct ConnectionPool {
+    connections: Arc<Mutex<HashMap<String, SshConnection>>>,
+}
+
+impl ConnectionPool {
+    pub fn new(idle_timeout: Duration) -> Self {
+        let connections: Arc<Mutex<HashMap<String, SshConnection>>> = Arc::new(Mutex::new(HashMap::new()));
+        
+        // Start background cleaner task
+        let pool_clone = Arc::clone(&connections);
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(10)).await;
+                let mut map = pool_clone.lock().await;
+                let now = Instant::now();
+                map.retain(|host, conn| {
+                    if now.duration_since(conn.last_used) > idle_timeout {
+                        eprintln!("Closing idle connection to host: {}", host);
+                        false
+                    } else {
+                        true
+                    }
+                });
+            }
+        });
+
+        Self { connections }
+    }
+
+    /// Gets or creates a connection to the specified host.
+    pub async fn get_connection(&self, host: &str) -> Result<Arc<Handle<ClientHandler>>> {
+        let mut map = self.connections.lock().await;
+        
+        // Check if we have an active connection that's still working
+        if let Some(conn) = map.get_mut(host) {
+            // Test if the connection is alive by checking if we can open a channel
+            match conn.handle.channel_open_session().await {
+                Ok(channel) => {
+                    // It works! We can close this test channel immediately and return the handle.
+                    let _ = channel.close();
+                    conn.last_used = Instant::now();
+                    return Ok(Arc::clone(&conn.handle));
+                }
+                Err(_) => {
+                    // Connection is dead, remove it from the pool and build a new one.
+                    eprintln!("Existing connection to {} was dead. Reconnecting...", host);
+                    map.remove(host);
+                }
+            }
+        }
+
+        // Create new connection
+        let handle = Arc::new(self.connect_new(host).await?);
+        map.insert(
+            host.to_string(),
+            SshConnection {
+                handle: Arc::clone(&handle),
+                last_used: Instant::now(),
+            },
+        );
+
+        Ok(handle)
+    }
+
+    async fn connect_new(&self, host: &str) -> Result<Handle<ClientHandler>> {
+        let ssh_config = load_ssh_config().unwrap_or_default();
+        let params = ssh_config.query(host);
+
+        let real_host = params.host_name.as_deref().unwrap_or(host);
+        let port = params.port.unwrap_or(22);
+        
+        let current_user = std::env::var("USER")
+            .or_else(|_| std::env::var("USERNAME"))
+            .unwrap_or_else(|_| "root".to_string());
+        let user = params.user.as_deref().unwrap_or(&current_user);
+
+        // Build list of keys to try
+        let mut keys_to_try = Vec::new();
+        if let Some(ref identity_files) = params.identity_file {
+            for id_file in identity_files {
+                keys_to_try.push(expand_path(id_file));
+            }
+        }
+
+        // If no keys specified, try standard default keys
+        if keys_to_try.is_empty() {
+            if let Some(home_dir) = home::home_dir() {
+                let ssh_dir = home_dir.join(".ssh");
+                keys_to_try.push(ssh_dir.join("id_rsa"));
+                keys_to_try.push(ssh_dir.join("id_ed25519"));
+                keys_to_try.push(ssh_dir.join("id_ecdsa"));
+                keys_to_try.push(ssh_dir.join("id_dsa"));
+            }
+        }
+
+        eprintln!(
+            "Connecting to {} ({}:{}) as user {}...",
+            host, real_host, port, user
+        );
+
+        // Resolve host to socket address
+        let addr_str = format!("{}:{}", real_host, port);
+        let addrs = tokio::net::lookup_host(&addr_str)
+            .await
+            .with_context(|| format!("Failed to resolve address: {}", addr_str))?;
+        let socket_addr = addrs
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow!("Could not resolve host: {}", real_host))?;
+
+        let config = Arc::new(russh::client::Config::default());
+        let mut handle = russh::client::connect(config, socket_addr, ClientHandler).await
+            .context("Failed to connect via TCP/SSH")?;
+
+        let mut authenticated = false;
+        for key_path in &keys_to_try {
+            if !key_path.exists() {
+                continue;
+            }
+            eprintln!("Attempting authentication with key: {:?}", key_path);
+            if let Ok(key) = russh_keys::load_secret_key(key_path, None) {
+                match handle.authenticate_publickey(user, Arc::new(key)).await {
+                    Ok(success) => {
+                        if success {
+                            eprintln!("Authentication succeeded for {} using {:?}", host, key_path);
+                            authenticated = true;
+                            break;
+                        } else {
+                            eprintln!("Server rejected key {:?}", key_path);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error authenticating with key {:?}: {:?}", key_path, e);
+                    }
+                }
+            }
+        }
+
+        if !authenticated {
+            return Err(anyhow!(
+                "Failed to authenticate connection to {} as user {}. No working keys found.",
+                host,
+                user
+            ));
+        }
+
+        Ok(handle)
+    }
+
+    /// Runs a command on a host, updating the last used time.
+    pub async fn execute_command(&self, host: &str, command: &str) -> Result<(String, String, u32)> {
+        let handle = self.get_connection(host).await?;
+
+        // Update last used timestamp
+        {
+            let mut map = self.connections.lock().await;
+            if let Some(conn) = map.get_mut(host) {
+                conn.last_used = Instant::now();
+            }
+        }
+
+        eprintln!("Executing command on {}: {:?}", host, command);
+        let mut channel = handle.channel_open_session().await
+            .context("Failed to open SSH channel")?;
+        
+        channel.exec(true, command).await
+            .context("Failed to request command execution")?;
+
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let mut exit_code = 0;
+
+        loop {
+            match channel.wait().await {
+                Some(russh::ChannelMsg::Data { data }) => {
+                    stdout.extend_from_slice(&data);
+                }
+                Some(russh::ChannelMsg::ExtendedData { data, ext }) => {
+                    if ext == 1 {
+                        stderr.extend_from_slice(&data);
+                    }
+                }
+                Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
+                    exit_code = exit_status;
+                }
+                None => break,
+                _ => {}
+            }
+        }
+
+        let stdout_str = String::from_utf8_lossy(&stdout).into_owned();
+        let stderr_str = String::from_utf8_lossy(&stderr).into_owned();
+
+        Ok((stdout_str, stderr_str, exit_code))
+    }
+}
