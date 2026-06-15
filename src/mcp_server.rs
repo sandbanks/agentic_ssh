@@ -364,7 +364,7 @@ impl McpServer {
                             "content": [
                                 {
                                     "type": "text",
-                                    "text": format!("Error: {}", e)
+                                    "text": format!("Error: {:#}", e)
                                 }
                             ],
                             "isError": true

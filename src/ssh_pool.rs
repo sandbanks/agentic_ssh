@@ -143,7 +143,49 @@ impl ConnectionPool {
             .context("Failed to connect via TCP/SSH")?;
 
         let mut authenticated = false;
-        for key_path in &keys_to_try {
+
+        // Try SSH Agent first if available
+        if let Ok(socket_path) = std::env::var("SSH_AUTH_SOCK") {
+            eprintln!("SSH_AUTH_SOCK found at {:?}. Attempting agent authentication...", socket_path);
+            match tokio::net::UnixStream::connect(&socket_path).await {
+                Ok(stream) => {
+                    let mut agent_client = russh_keys::agent::client::AgentClient::connect(stream);
+                    match agent_client.request_identities().await {
+                        Ok(identities) => {
+                            eprintln!("Found {} keys in SSH agent", identities.len());
+                            for identity in identities {
+                                eprintln!("Trying agent key...");
+                                let (ac, res) = handle.authenticate_future(user, identity, agent_client).await;
+                                agent_client = ac;
+                                match res {
+                                    Ok(success) => {
+                                        if success {
+                                            eprintln!("Authentication succeeded for {} using SSH agent key", host);
+                                            authenticated = true;
+                                            break;
+                                        } else {
+                                            eprintln!("Server rejected agent key");
+                                        }
+                                    }
+                                    Err(e) => {
+                                        eprintln!("Error with agent authentication: {:?}", e);
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to request identities from SSH agent: {:?}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to connect to SSH agent socket: {:?}", e);
+                }
+            }
+        }
+
+        if !authenticated {
+            for key_path in &keys_to_try {
             if !key_path.exists() {
                 continue;
             }
@@ -165,6 +207,7 @@ impl ConnectionPool {
                 }
             }
         }
+    }
 
         if !authenticated {
             return Err(anyhow!(
@@ -224,3 +267,4 @@ impl ConnectionPool {
         Ok((stdout_str, stderr_str, exit_code))
     }
 }
+
