@@ -112,16 +112,18 @@ impl ConnectionPool {
             }
         }
 
-        // If no keys specified, try standard default keys
-        if keys_to_try.is_empty() {
-            if let Some(home_dir) = home::home_dir() {
-                let ssh_dir = home_dir.join(".ssh");
-                keys_to_try.push(ssh_dir.join("id_rsa"));
-                keys_to_try.push(ssh_dir.join("id_ed25519"));
-                keys_to_try.push(ssh_dir.join("id_ecdsa"));
-                keys_to_try.push(ssh_dir.join("id_dsa"));
-            }
+        // Always append standard default keys as fallbacks (mimicking OpenSSH)
+        if let Some(home_dir) = home::home_dir() {
+            let ssh_dir = home_dir.join(".ssh");
+            keys_to_try.push(ssh_dir.join("id_rsa"));
+            keys_to_try.push(ssh_dir.join("id_ed25519"));
+            keys_to_try.push(ssh_dir.join("id_ecdsa"));
+            keys_to_try.push(ssh_dir.join("id_dsa"));
         }
+
+        // Deduplicate key files while keeping the original order
+        let mut seen = std::collections::HashSet::new();
+        keys_to_try.retain(|x| seen.insert(x.clone()));
 
         eprintln!(
             "Connecting to {} ({}:{}) as user {}...",
