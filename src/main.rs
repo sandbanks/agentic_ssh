@@ -62,6 +62,7 @@ fn run_tui() -> anyhow::Result<()> {
         println!("Active connections: {}", active_count);
         println!("(Auto-refreshing every 1 second)");
 
+        let _ = std::io::Write::flush(&mut std::io::stdout());
         std::thread::sleep(Duration::from_secs(1));
     }
 }

@@ -53,36 +53,32 @@ impl ConnectionPool {
         let pool_clone = Arc::clone(&connections);
         tokio::spawn(async move {
             loop {
-                tokio::time::sleep(Duration::from_secs(10)).await;
+                tokio::time::sleep(Duration::from_secs(1)).await;
                 let mut map = pool_clone.lock().await;
                 let now = Instant::now();
-                let mut changed = false;
                 map.retain(|host, conn| {
                     if now.duration_since(conn.last_used) > idle_timeout {
                         eprintln!("Closing idle connection to host: {}", host);
-                        changed = true;
                         false
                     } else {
                         true
                     }
                 });
 
-                if changed {
-                    let statuses: Vec<ConnectionStatus> = map
-                        .iter()
-                        .map(|(host, conn)| {
-                            let elapsed = now.duration_since(conn.last_used);
-                            let remaining = idle_timeout.saturating_sub(elapsed);
-                            ConnectionStatus {
-                                host: host.clone(),
-                                elapsed_secs: elapsed.as_secs(),
-                                remaining_secs: remaining.as_secs(),
-                            }
-                        })
-                        .collect();
-                    if let Ok(file) = std::fs::File::create("/Users/richard/projects/rust/agentic_ssh/pool_status.json") {
-                        let _ = serde_json::to_writer_pretty(file, &statuses);
-                    }
+                let statuses: Vec<ConnectionStatus> = map
+                    .iter()
+                    .map(|(host, conn)| {
+                        let elapsed = now.duration_since(conn.last_used);
+                        let remaining = idle_timeout.saturating_sub(elapsed);
+                        ConnectionStatus {
+                            host: host.clone(),
+                            elapsed_secs: elapsed.as_secs(),
+                            remaining_secs: remaining.as_secs(),
+                        }
+                    })
+                    .collect();
+                if let Ok(file) = std::fs::File::create("/Users/richard/projects/rust/agentic_ssh/pool_status.json") {
+                    let _ = serde_json::to_writer_pretty(file, &statuses);
                 }
             }
         });
