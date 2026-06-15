@@ -67,7 +67,7 @@ fn run_tui() -> anyhow::Result<()> {
         // Position cursor at home (1,1) and clear everything below it
         print!("\x1B[H\x1B[J");
 
-        let inner_width = max_host_len + 43; // max_host_len + 12 (Last Used) + 12 (Auto-Close) + 10 (Status) + 9 (separators/spaces)
+        let inner_width = max_host_len + 45; // max_host_len + 12 (Last Used) + 12 (Auto-Close) + 10 (Status) + 11 (separators/spaces)
         let border_top = format!("┌{}┐", "─".repeat(inner_width));
         let border_mid = format!("├{}┤", "─".repeat(inner_width));
         let border_bot = format!("└{}┘", "─".repeat(inner_width));
