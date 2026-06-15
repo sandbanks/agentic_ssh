@@ -101,6 +101,22 @@ Executes a shell command on one of the configured hosts.
   }
   ```
 
+### 3. `search_processes`
+Searches running processes on a remote host matching a pattern or regex, returning a structured JSON result list. Saves a massive amount of context tokens compared to dumping raw `ps` lists.
+- **Arguments**:
+  - `host` (string, required): The SSH host alias from `~/.ssh/config` to query.
+  - `pattern` (string, required): A regex or substring pattern to filter process command lines (case-insensitive).
+  - `full_info` (boolean, optional): If `true`, returns detailed statistics (`pid`, `user`, `cpu`, `mem`, `command`). If `false`, returns a concise list of `pid` and `command`. Defaults to `false`.
+- **Returns**: A JSON array of matching process objects, e.g.:
+  ```json
+  [
+    {
+      "pid": 512,
+      "command": "/usr/local/bin/localmail serve --port 80"
+    }
+  ]
+  ```
+
 ---
 
 ## Running Tests

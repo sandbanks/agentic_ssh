@@ -232,6 +232,28 @@ impl McpServer {
                                 },
                                 "required": ["host", "command"]
                             }
+                        },
+                        {
+                            "name": "search_processes",
+                            "description": "Search running processes on a remote host matching a pattern/regex, returning structured JSON results to save tokens.",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "host": {
+                                        "type": "string",
+                                        "description": "The SSH host to query"
+                                    },
+                                    "pattern": {
+                                        "type": "string",
+                                        "description": "The regex or substring pattern to filter process command lines (case-insensitive)"
+                                    },
+                                    "full_info": {
+                                        "type": "boolean",
+                                        "description": "If true, returns detailed stats (PID, USER, %CPU, %MEM, Command). If false, returns a concise list of PIDs and commands. Default: false."
+                                    }
+                                },
+                                "required": ["host", "pattern"]
+                            }
                         }
                     ]
                 });
@@ -372,6 +394,107 @@ impl McpServer {
                     }
                 }
             }
+            "search_processes" => {
+                let host = arguments
+                    .get("host")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Missing 'host' argument"))?;
+                
+                let pattern = arguments
+                    .get("pattern")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Missing 'pattern' argument"))?;
+
+                let full_info = arguments
+                    .get("full_info")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+
+                // Build case-insensitive regex
+                let re = regex::RegexBuilder::new(pattern)
+                    .case_insensitive(true)
+                    .build()
+                    .map_err(|e| anyhow::anyhow!("Invalid regex pattern: {}", e))?;
+
+                // POSIX-standard process listing
+                match self.pool.execute_command(host, "ps -eo pid,user,%cpu,%mem,args").await {
+                    Ok((stdout, stderr, exit_code)) => {
+                        if exit_code != 0 {
+                            let text = format!("Error running ps command (exit code {}):\n{}", exit_code, stderr);
+                            return Ok(serde_json::json!({
+                                "content": [{ "type": "text", "text": text }],
+                                "isError": true
+                            }));
+                        }
+
+                        let mut results = Vec::new();
+
+                        for line in stdout.lines() {
+                            let trimmed = line.trim();
+                            if trimmed.is_empty() {
+                                continue;
+                            }
+                            
+                            // Split by whitespace
+                            let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                            if parts.len() < 5 {
+                                continue;
+                            }
+
+                            // If the first column doesn't parse as PID, it's the header row or invalid
+                            let pid = match parts[0].parse::<u32>() {
+                                Ok(p) => p,
+                                Err(_) => continue,
+                            };
+
+                            let user = parts[1];
+                            let cpu = parts[2];
+                            let mem = parts[3];
+                            let command = parts[4..].join(" ");
+
+                            // Filter using the regex on the command line
+                            if re.is_match(&command) {
+                                if full_info {
+                                    results.push(serde_json::json!({
+                                        "pid": pid,
+                                        "user": user,
+                                        "cpu": cpu,
+                                        "mem": mem,
+                                        "command": command
+                                    }));
+                                } else {
+                                    results.push(serde_json::json!({
+                                        "pid": pid,
+                                        "command": command
+                                    }));
+                                }
+                            }
+                        }
+
+                        let text = serde_json::to_string_pretty(&results)?;
+                        Ok(serde_json::json!({
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": text
+                                }
+                            ],
+                            "isError": false
+                        }))
+                    }
+                    Err(e) => {
+                        Ok(serde_json::json!({
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": format!("Error: {:#}", e)
+                                }
+                            ],
+                            "isError": true
+                        }))
+                    }
+                }
+            }
             _ => Err(anyhow::anyhow!("Unknown tool: {}", name)),
         }
     }
@@ -392,6 +515,23 @@ mod tests {
         // Under limit should be unmodified
         let output_under = abbreviate_output(input, 20);
         assert_eq!(output_under, input.to_string());
+    }
+
+    #[test]
+    fn test_parse_ps_line() {
+        // Mock ps output line
+        let line = " 1234 richard   0.5  1.2 /usr/local/bin/localmail serve --port 80";
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        assert_eq!(parts[0].parse::<u32>().unwrap(), 1234);
+        assert_eq!(parts[1], "richard");
+        assert_eq!(parts[2], "0.5");
+        assert_eq!(parts[3], "1.2");
+        assert_eq!(parts[4..].join(" "), "/usr/local/bin/localmail serve --port 80");
+        
+        // Header line should not parse as PID
+        let header = "  PID USER      %CPU %MEM COMMAND";
+        let parts_header: Vec<&str> = header.split_whitespace().collect();
+        assert!(parts_header[0].parse::<u32>().is_err());
     }
 }
 
