@@ -335,10 +335,37 @@ impl McpServer {
                         }
                     ]
                 });
+
+                // Add custom tools from config
+                let mut tools_val = tools;
+                if let Some(tools_arr) = tools_val.get_mut("tools").and_then(|t| t.as_array_mut()) {
+                    let config = crate::ssh_pool::load_config();
+                    for custom in config.custom_tools {
+                        tools_arr.push(serde_json::json!({
+                            "name": custom.name,
+                            "description": custom.description,
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "host": {
+                                        "type": "string",
+                                        "description": "The SSH host to query"
+                                    },
+                                    "args": {
+                                        "type": "string",
+                                        "description": "Optional arguments/parameters to pass to the command (replaces {args} in the template or is appended)"
+                                    }
+                                },
+                                "required": ["host"]
+                            }
+                        }));
+                    }
+                }
+
                 JsonRpcResponse {
                     jsonrpc: "2.0".to_string(),
                     id,
-                    result: Some(tools),
+                    result: Some(tools_val),
                     error: None,
                 }
             }
@@ -800,7 +827,51 @@ impl McpServer {
                     }))
                 }
             }
-            _ => Err(anyhow::anyhow!("Unknown tool: {}", name)),
+            _ => {
+                let config = crate::ssh_pool::load_config();
+                if let Some(custom) = config.custom_tools.iter().find(|t| t.name == name) {
+                    let host = arguments
+                        .get("host")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| anyhow::anyhow!("Missing 'host' argument"))?;
+
+                    let args = arguments
+                        .get("args")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+
+                    let cmd_to_run = if custom.command.contains("{args}") {
+                        custom.command.replace("{args}", args)
+                    } else if !args.is_empty() {
+                        format!("{} {}", custom.command, args)
+                    } else {
+                        custom.command.clone()
+                    };
+
+                    match self.pool.execute_command(host, &cmd_to_run).await {
+                        Ok((stdout, stderr, exit_code)) => {
+                            let is_error = exit_code != 0;
+                            let text = if is_error {
+                                format!("Error executing custom tool '{}' (exit code {}):\n{}", name, exit_code, stderr)
+                            } else {
+                                stdout
+                            };
+                            Ok(serde_json::json!({
+                                "content": [{ "type": "text", "text": text }],
+                                "isError": is_error
+                            }))
+                        }
+                        Err(e) => {
+                            Ok(serde_json::json!({
+                                "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
+                                "isError": true
+                            }))
+                        }
+                    }
+                } else {
+                    Err(anyhow::anyhow!("Unknown tool: {}", name))
+                }
+            }
         }
     }
 }
@@ -837,6 +908,32 @@ mod tests {
         let header = "  PID USER      %CPU %MEM COMMAND";
         let parts_header: Vec<&str> = header.split_whitespace().collect();
         assert!(parts_header[0].parse::<u32>().is_err());
+    }
+
+    #[test]
+    fn test_custom_command_interpolation() {
+        // Test template replacement and appending
+        let cmd_template = "grep -i '{args}' /var/log/syslog";
+        let args = "error";
+        let cmd_to_run = if cmd_template.contains("{args}") {
+            cmd_template.replace("{args}", args)
+        } else if !args.is_empty() {
+            format!("{} {}", cmd_template, args)
+        } else {
+            cmd_template.to_string()
+        };
+        assert_eq!(cmd_to_run, "grep -i 'error' /var/log/syslog");
+
+        let cmd_simple = "apt list --upgradable";
+        let args_simple = "some_extra";
+        let cmd_to_run_simple = if cmd_simple.contains("{args}") {
+            cmd_simple.replace("{args}", args_simple)
+        } else if !args_simple.is_empty() {
+            format!("{} {}", cmd_simple, args_simple)
+        } else {
+            cmd_simple.to_string()
+        };
+        assert_eq!(cmd_to_run_simple, "apt list --upgradable some_extra");
     }
 }
 

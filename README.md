@@ -61,6 +61,7 @@ On macOS, edit `~/Library/Application Support/Claude/claude_desktop_config.json`
 
 ### Configuration Options
 - `pool_status_path` (string): The path to write/read the connection pool status JSON file. Supports absolute paths or tilde expansion (`~/`). Defaults to `~/.agentic_ssh_pool_status.json`.
+- `custom_tools` (array of tables): Defines custom subcommands that dynamically register as first-class MCP tools.
 
 Example `~/.config/agentic_ssh/config.toml`:
 ```toml
@@ -68,7 +69,26 @@ Example `~/.config/agentic_ssh/config.toml`:
 
 # Custom path to write the connection pool status JSON file
 pool_status_path = "~/.agentic_ssh_pool_status.json"
+
+# Register custom command abbreviations as first-class MCP tools
+[[custom_tools]]
+name = "list_upgradable"
+description = "List all packages that can be upgraded on the host via apt"
+command = "apt list --upgradable"
+
+[[custom_tools]]
+name = "grep_syslog"
+description = "Grep syslog for a specific pattern"
+command = "grep -i '{args}' /var/log/syslog"
 ```
+
+### Custom Tools / Command Abbreviations
+When you define a table in `custom_tools`, the MCP server dynamically registers it as a first-class tool when the client calls `tools/list`. 
+Each custom tool automatically supports:
+1. `host` (string, required): The target SSH host.
+2. `args` (string, optional): Optional arguments. If the command template contains `{args}`, the placeholder is replaced by the value of `args`. Otherwise, if `args` is provided, it is appended to the command (separated by a space).
+
+This allows developers to extend the MCP server without writing Rust code, simplifying agent usage and saving prompt tokens.
 
 ### Environment Overrides
 For development or automated setups, you can override settings using environment variables, which take precedence over the configuration file:

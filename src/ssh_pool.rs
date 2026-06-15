@@ -23,9 +23,18 @@ impl russh::client::Handler for ClientHandler {
     }
 }
 
+#[derive(serde::Deserialize, Debug, Clone)]
+pub struct CustomTool {
+    pub name: String,
+    pub description: String,
+    pub command: String,
+}
+
 #[derive(serde::Deserialize, Debug, Default)]
 pub struct Config {
     pub pool_status_path: Option<String>,
+    #[serde(default)]
+    pub custom_tools: Vec<CustomTool>,
 }
 
 pub fn load_config() -> Config {
