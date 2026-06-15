@@ -28,14 +28,27 @@ pub struct SshConnection {
     pub last_used: Instant,
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+pub struct ConnectionStatus {
+    pub host: String,
+    pub elapsed_secs: u64,
+    pub remaining_secs: u64,
+}
+
 pub struct ConnectionPool {
     connections: Arc<Mutex<HashMap<String, SshConnection>>>,
+    idle_timeout: Duration,
 }
 
 impl ConnectionPool {
     pub fn new(idle_timeout: Duration) -> Self {
         let connections: Arc<Mutex<HashMap<String, SshConnection>>> = Arc::new(Mutex::new(HashMap::new()));
         
+        let pool = Self {
+            connections: Arc::clone(&connections),
+            idle_timeout,
+        };
+
         // Start background cleaner task
         let pool_clone = Arc::clone(&connections);
         tokio::spawn(async move {
@@ -43,18 +56,58 @@ impl ConnectionPool {
                 tokio::time::sleep(Duration::from_secs(10)).await;
                 let mut map = pool_clone.lock().await;
                 let now = Instant::now();
+                let mut changed = false;
                 map.retain(|host, conn| {
                     if now.duration_since(conn.last_used) > idle_timeout {
                         eprintln!("Closing idle connection to host: {}", host);
+                        changed = true;
                         false
                     } else {
                         true
                     }
                 });
+
+                if changed {
+                    let statuses: Vec<ConnectionStatus> = map
+                        .iter()
+                        .map(|(host, conn)| {
+                            let elapsed = now.duration_since(conn.last_used);
+                            let remaining = idle_timeout.saturating_sub(elapsed);
+                            ConnectionStatus {
+                                host: host.clone(),
+                                elapsed_secs: elapsed.as_secs(),
+                                remaining_secs: remaining.as_secs(),
+                            }
+                        })
+                        .collect();
+                    if let Ok(file) = std::fs::File::create("/Users/richard/projects/rust/agentic_ssh/pool_status.json") {
+                        let _ = serde_json::to_writer_pretty(file, &statuses);
+                    }
+                }
             }
         });
 
-        Self { connections }
+        pool
+    }
+
+    async fn save_status(&self) {
+        let map = self.connections.lock().await;
+        let now = Instant::now();
+        let statuses: Vec<ConnectionStatus> = map
+            .iter()
+            .map(|(host, conn)| {
+                let elapsed = now.duration_since(conn.last_used);
+                let remaining = self.idle_timeout.saturating_sub(elapsed);
+                ConnectionStatus {
+                    host: host.clone(),
+                    elapsed_secs: elapsed.as_secs(),
+                    remaining_secs: remaining.as_secs(),
+                }
+            })
+            .collect();
+        if let Ok(file) = std::fs::File::create("/Users/richard/projects/rust/agentic_ssh/pool_status.json") {
+            let _ = serde_json::to_writer_pretty(file, &statuses);
+        }
     }
 
     /// Gets or creates a connection to the specified host.
@@ -69,7 +122,10 @@ impl ConnectionPool {
                     // It works! We can close this test channel immediately and return the handle.
                     let _ = channel.close();
                     conn.last_used = Instant::now();
-                    return Ok(Arc::clone(&conn.handle));
+                    let handle = Arc::clone(&conn.handle);
+                    drop(map);
+                    self.save_status().await;
+                    return Ok(handle);
                 }
                 Err(_) => {
                     // Connection is dead, remove it from the pool and build a new one.
@@ -88,6 +144,9 @@ impl ConnectionPool {
                 last_used: Instant::now(),
             },
         );
+
+        drop(map);
+        self.save_status().await;
 
         Ok(handle)
     }
@@ -233,6 +292,7 @@ impl ConnectionPool {
                 conn.last_used = Instant::now();
             }
         }
+        self.save_status().await;
 
         eprintln!("Executing command on {}: {:?}", host, command);
         let mut channel = handle.channel_open_session().await
