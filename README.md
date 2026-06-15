@@ -85,3 +85,16 @@ To run the unit tests:
 ```bash
 cargo test
 ```
+
+---
+
+## TUI Dashboard
+
+You can run a live-updating TUI dashboard in your terminal to see the active SSH connections in the pool, how long ago they were last used, and how much time remains before they are automatically closed due to inactivity:
+
+```bash
+cargo run --release -- tui
+# or:
+./target/release/agentic_ssh tui
+```
+
