@@ -23,6 +23,17 @@ impl russh::client::Handler for ClientHandler {
     }
 }
 
+pub fn get_pool_status_path() -> std::path::PathBuf {
+    dotenvy::dotenv().ok();
+    if let Ok(val) = std::env::var("AGENTIC_SSH_POOL_STATUS") {
+        return std::path::PathBuf::from(val);
+    }
+    if let Some(home_dir) = home::home_dir() {
+        return home_dir.join(".agentic_ssh_pool_status.json");
+    }
+    std::path::PathBuf::from("pool_status.json")
+}
+
 pub struct SshConnection {
     pub handle: Arc<Handle<ClientHandler>>,
     pub last_used: Instant,
@@ -82,7 +93,7 @@ impl ConnectionPool {
                         }
                     })
                     .collect();
-                if let Ok(file) = std::fs::File::create("/Users/richard/projects/rust/agentic_ssh/pool_status.json") {
+                if let Ok(file) = std::fs::File::create(get_pool_status_path()) {
                     let _ = serde_json::to_writer_pretty(file, &statuses);
                 }
             }
@@ -111,7 +122,7 @@ impl ConnectionPool {
                 }
             })
             .collect();
-        if let Ok(file) = std::fs::File::create("/Users/richard/projects/rust/agentic_ssh/pool_status.json") {
+        if let Ok(file) = std::fs::File::create(get_pool_status_path()) {
             let _ = serde_json::to_writer_pretty(file, &statuses);
         }
     }

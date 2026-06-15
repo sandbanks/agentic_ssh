@@ -5,3 +5,4 @@
 
 /target
 /pool_status.json
+.env

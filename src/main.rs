@@ -10,6 +10,7 @@ mod ssh_pool;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    dotenvy::dotenv().ok();
     let args: Vec<String> = std::env::args().collect();
     if args.len() > 1 && args[1] == "tui" {
         run_tui()?;
@@ -24,7 +25,8 @@ async fn main() -> anyhow::Result<()> {
 
 fn run_tui() -> anyhow::Result<()> {
     println!("Starting agentic_ssh TUI Dashboard... Press Ctrl+C to exit.");
-    let path = std::path::Path::new("/Users/richard/projects/rust/agentic_ssh/pool_status.json");
+    let path_buf = ssh_pool::get_pool_status_path();
+    let path = path_buf.as_path();
 
     loop {
         let daemon_active = std::fs::metadata(path)
