@@ -4,3 +4,4 @@
 # Added by cargo
 
 /target
+/pool_status.json
