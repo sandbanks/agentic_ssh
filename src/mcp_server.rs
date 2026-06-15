@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
@@ -254,6 +254,84 @@ impl McpServer {
                                 },
                                 "required": ["host", "pattern"]
                             }
+                        },
+                        {
+                            "name": "tail_log",
+                            "description": "Fetch the last N lines of a remote log file.",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "host": {
+                                        "type": "string",
+                                        "description": "The SSH host to query"
+                                    },
+                                    "file_path": {
+                                        "type": "string",
+                                        "description": "The absolute path of the log file"
+                                    },
+                                    "lines": {
+                                        "type": "integer",
+                                        "description": "Number of lines to retrieve (default: 50)"
+                                    }
+                                },
+                                "required": ["host", "file_path"]
+                            }
+                        },
+                        {
+                            "name": "tail_container_logs",
+                            "description": "Fetch the last N lines of logs from a remote Docker container.",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "host": {
+                                        "type": "string",
+                                        "description": "The SSH host to query"
+                                    },
+                                    "container": {
+                                        "type": "string",
+                                        "description": "The Docker container name or ID"
+                                    },
+                                    "lines": {
+                                        "type": "integer",
+                                        "description": "Number of lines to retrieve (default: 50)"
+                                    },
+                                    "timestamps": {
+                                        "type": "boolean",
+                                        "description": "Include timestamps in the log output (default: false)"
+                                    }
+                                },
+                                "required": ["host", "container"]
+                            }
+                        },
+                        {
+                            "name": "wait_for_log_pattern",
+                            "description": "Streams a log file or Docker container logs and blocks until a regex pattern is matched or timeout occurs. Efficiently alerts the agent when an event happens.",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "host": {
+                                        "type": "string",
+                                        "description": "The SSH host to query"
+                                    },
+                                    "file_path": {
+                                        "type": "string",
+                                        "description": "The absolute path of the log file to stream (provide either file_path or container)"
+                                    },
+                                    "container": {
+                                        "type": "string",
+                                        "description": "The Docker container name or ID to stream (provide either file_path or container)"
+                                    },
+                                    "pattern": {
+                                        "type": "string",
+                                        "description": "The regex pattern to wait for (case-insensitive)"
+                                    },
+                                    "timeout_secs": {
+                                        "type": "integer",
+                                        "description": "Maximum seconds to wait before timing out (default: 30)"
+                                    }
+                                },
+                                "required": ["host", "pattern"]
+                            }
                         }
                     ]
                 });
@@ -493,6 +571,233 @@ impl McpServer {
                             "isError": true
                         }))
                     }
+                }
+            }
+            "tail_log" => {
+                let host = arguments
+                    .get("host")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Missing 'host' argument"))?;
+                
+                let file_path = arguments
+                    .get("file_path")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Missing 'file_path' argument"))?;
+
+                let lines = arguments
+                    .get("lines")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(50);
+
+                let command = format!("tail -n {} {}", lines, file_path);
+
+                match self.pool.execute_command(host, &command).await {
+                    Ok((stdout, stderr, exit_code)) => {
+                        let is_error = exit_code != 0;
+                        let text = if is_error {
+                            format!("Error tailing file (exit code {}):\n{}", exit_code, stderr)
+                        } else {
+                            stdout
+                        };
+                        Ok(serde_json::json!({
+                            "content": [{ "type": "text", "text": text }],
+                            "isError": is_error
+                        }))
+                    }
+                    Err(e) => {
+                        Ok(serde_json::json!({
+                            "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
+                            "isError": true
+                        }))
+                    }
+                }
+            }
+            "tail_container_logs" => {
+                let host = arguments
+                    .get("host")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Missing 'host' argument"))?;
+                
+                let container = arguments
+                    .get("container")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Missing 'container' argument"))?;
+
+                let lines = arguments
+                    .get("lines")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(50);
+
+                let timestamps = arguments
+                    .get("timestamps")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+
+                let ts_flag = if timestamps { "-t" } else { "" };
+                let command = format!("docker logs --tail {} {} {}", lines, ts_flag, container);
+
+                match self.pool.execute_command(host, &command).await {
+                    Ok((stdout, stderr, exit_code)) => {
+                        let is_error = exit_code != 0;
+                        let text = if is_error {
+                            format!("Error fetching container logs (exit code {}):\n{}", exit_code, stderr)
+                        } else {
+                            if stdout.is_empty() && !stderr.is_empty() {
+                                stderr
+                            } else {
+                                stdout
+                            }
+                        };
+                        Ok(serde_json::json!({
+                            "content": [{ "type": "text", "text": text }],
+                            "isError": is_error
+                        }))
+                    }
+                    Err(e) => {
+                        Ok(serde_json::json!({
+                            "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
+                            "isError": true
+                        }))
+                    }
+                }
+            }
+            "wait_for_log_pattern" => {
+                let host = arguments
+                    .get("host")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Missing 'host' argument"))?;
+                
+                let file_path = arguments.get("file_path").and_then(|v| v.as_str());
+                let container = arguments.get("container").and_then(|v| v.as_str());
+
+                if file_path.is_none() && container.is_none() {
+                    return Err(anyhow::anyhow!("Provide either 'file_path' or 'container' argument"));
+                }
+                if file_path.is_some() && container.is_some() {
+                    return Err(anyhow::anyhow!("Provide either 'file_path' or 'container', not both"));
+                }
+
+                let pattern = arguments
+                    .get("pattern")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Missing 'pattern' argument"))?;
+
+                let timeout_secs = arguments
+                    .get("timeout_secs")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(30);
+
+                let re = regex::RegexBuilder::new(pattern)
+                    .case_insensitive(true)
+                    .build()
+                    .map_err(|e| anyhow::anyhow!("Invalid regex pattern: {}", e))?;
+
+                let cmd = if let Some(path) = file_path {
+                    format!("tail -f -n 10 {}", path)
+                } else {
+                    format!("docker logs -f --tail 10 {}", container.unwrap())
+                };
+
+                let handle = self.pool.get_connection(host).await?;
+                let mut channel = handle.channel_open_session().await
+                    .context("Failed to open SSH channel")?;
+                
+                channel.exec(true, cmd).await
+                    .context("Failed to execute tail/log command")?;
+
+                let mut stdout_buf = Vec::new();
+                let mut matched_line = None;
+                let mut error_msg = None;
+
+                let sleep_duration = Duration::from_millis(50);
+                let start_time = std::time::Instant::now();
+                let timeout = Duration::from_secs(timeout_secs);
+
+                loop {
+                    if start_time.elapsed() >= timeout {
+                        error_msg = Some(format!("Timed out after {} seconds waiting for pattern '{}'", timeout_secs, pattern));
+                        break;
+                    }
+
+                    match tokio::time::timeout(sleep_duration, channel.wait()).await {
+                        Ok(Some(russh::ChannelMsg::Data { data })) => {
+                            stdout_buf.extend_from_slice(&data);
+                            
+                            let mut found = false;
+                            while let Some(pos) = stdout_buf.iter().position(|&b| b == b'\n') {
+                                let line_bytes: Vec<u8> = stdout_buf.drain(..=pos).collect();
+                                let line_str = String::from_utf8_lossy(&line_bytes[..line_bytes.len() - 1]).into_owned();
+                                if re.is_match(&line_str) {
+                                    matched_line = Some(line_str);
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if found {
+                                break;
+                            }
+                        }
+                        Ok(Some(russh::ChannelMsg::ExtendedData { data, ext })) => {
+                            if ext == 1 {
+                                stdout_buf.extend_from_slice(&data);
+                                
+                                let mut found = false;
+                                while let Some(pos) = stdout_buf.iter().position(|&b| b == b'\n') {
+                                    let line_bytes: Vec<u8> = stdout_buf.drain(..=pos).collect();
+                                    let line_str = String::from_utf8_lossy(&line_bytes[..line_bytes.len() - 1]).into_owned();
+                                    if re.is_match(&line_str) {
+                                        matched_line = Some(line_str);
+                                        found = true;
+                                        break;
+                                    }
+                                }
+                                if found {
+                                    break;
+                                }
+                            }
+                        }
+                        Ok(Some(russh::ChannelMsg::ExitStatus { exit_status })) => {
+                            if exit_status != 0 {
+                                error_msg = Some(format!("Command exited with status {}", exit_status));
+                            }
+                            break;
+                        }
+                        Ok(None) => {
+                            break;
+                        }
+                        Err(_) => {
+                            // Timeout elapsed, loop again to check total timeout
+                        }
+                        _ => {}
+                    }
+                }
+
+                if matched_line.is_none() && error_msg.is_none() && !stdout_buf.is_empty() {
+                    let line_str = String::from_utf8_lossy(&stdout_buf).into_owned();
+                    if re.is_match(&line_str) {
+                        matched_line = Some(line_str);
+                    }
+                }
+
+                let _ = channel.close().await;
+
+                if let Some(line) = matched_line {
+                    Ok(serde_json::json!({
+                        "content": [{
+                            "type": "text",
+                            "text": format!("Pattern matched! Line found:\n{}", line)
+                        }],
+                        "isError": false
+                    }))
+                } else {
+                    let err = error_msg.unwrap_or_else(|| "Connection closed before pattern was matched".to_string());
+                    Ok(serde_json::json!({
+                        "content": [{
+                            "type": "text",
+                            "text": err
+                        }],
+                        "isError": true
+                    }))
                 }
             }
             _ => Err(anyhow::anyhow!("Unknown tool: {}", name)),

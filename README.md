@@ -117,6 +117,33 @@ Searches running processes on a remote host matching a pattern or regex, returni
   ]
   ```
 
+### 4. `tail_log`
+Fetch the last N lines of a remote log file.
+- **Arguments**:
+  - `host` (string, required): The SSH host alias from `~/.ssh/config` to query.
+  - `file_path` (string, required): The absolute path of the remote log file.
+  - `lines` (integer, optional): Number of lines to retrieve (default: 50).
+- **Returns**: The tail output text.
+
+### 5. `tail_container_logs`
+Fetch the last N lines of logs from a remote Docker container.
+- **Arguments**:
+  - `host` (string, required): The SSH host alias from `~/.ssh/config` to query.
+  - `container` (string, required): The Docker container name or ID.
+  - `lines` (integer, optional): Number of lines to retrieve (default: 50).
+  - `timestamps` (boolean, optional): Include timestamps in log output (default: false).
+- **Returns**: The container logs output text.
+
+### 6. `wait_for_log_pattern`
+Streams a remote log file or Docker container logs and blocks until a regex pattern is matched or a timeout occurs. Extremely efficient for waiting for specific events (e.g. "server started") without polling or streaming full logs to the LLM.
+- **Arguments**:
+  - `host` (string, required): The SSH host alias from `~/.ssh/config` to query.
+  - `file_path` (string, optional): Absolute path of log file (specify either `file_path` or `container`).
+  - `container` (string, optional): Docker container name/ID (specify either `file_path` or `container`).
+  - `pattern` (string, required): The regex pattern to wait for (case-insensitive).
+  - `timeout_secs` (integer, optional): Maximum seconds to wait before timeout (default: 30).
+- **Returns**: A confirmation string showing the matching line, or a timeout message.
+
 ---
 
 ## Running Tests
