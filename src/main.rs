@@ -10,7 +10,6 @@ mod ssh_pool;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    dotenvy::dotenv().ok();
     let args: Vec<String> = std::env::args().collect();
     if args.len() > 1 && args[1] == "tui" {
         run_tui()?;

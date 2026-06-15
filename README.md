@@ -55,6 +55,27 @@ On macOS, edit `~/Library/Application Support/Claude/claude_desktop_config.json`
 
 ---
 
+## Configuration
+
+`agentic_ssh` can be configured globally using a TOML config file located at `~/.config/agentic_ssh/config.toml` (this directory and file are optional).
+
+### Configuration Options
+- `pool_status_path` (string): The path to write/read the connection pool status JSON file. Supports absolute paths or tilde expansion (`~/`). Defaults to `~/.agentic_ssh_pool_status.json`.
+
+Example `~/.config/agentic_ssh/config.toml`:
+```toml
+# Configuration for agentic_ssh
+
+# Custom path to write the connection pool status JSON file
+pool_status_path = "~/.agentic_ssh_pool_status.json"
+```
+
+### Environment Overrides
+For development or automated setups, you can override settings using environment variables, which take precedence over the configuration file:
+- `AGENTIC_SSH_POOL_STATUS`: Path to the pool status file (e.g. `/tmp/pool_status.json`).
+
+---
+
 ## Available Tools
 
 The MCP server exposes two main tools to connected agents:

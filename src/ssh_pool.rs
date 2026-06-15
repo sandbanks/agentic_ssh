@@ -23,10 +23,28 @@ impl russh::client::Handler for ClientHandler {
     }
 }
 
+#[derive(serde::Deserialize, Debug, Default)]
+pub struct Config {
+    pub pool_status_path: Option<String>,
+}
+
+pub fn load_config() -> Config {
+    home::home_dir()
+        .map(|home_dir| home_dir.join(".config").join("agentic_ssh").join("config.toml"))
+        .filter(|path| path.exists())
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|content| toml::from_str::<Config>(&content).ok())
+        .unwrap_or_default()
+}
+
 pub fn get_pool_status_path() -> std::path::PathBuf {
-    dotenvy::dotenv().ok();
     if let Ok(val) = std::env::var("AGENTIC_SSH_POOL_STATUS") {
         return std::path::PathBuf::from(val);
+    }
+    let config = load_config();
+    if let Some(ref path_str) = config.pool_status_path {
+        let raw_path = std::path::Path::new(path_str);
+        return expand_path(raw_path);
     }
     if let Some(home_dir) = home::home_dir() {
         return home_dir.join(".agentic_ssh_pool_status.json");
