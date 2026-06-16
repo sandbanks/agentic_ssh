@@ -164,6 +164,19 @@ Streams a remote log file or Docker container logs and blocks until a regex patt
   - `timeout_secs` (integer, optional): Maximum seconds to wait before timeout (default: 30).
 - **Returns**: A confirmation string showing the matching line, or a timeout message.
 
+### 7. `get_system_stats`
+Fetch remote system statistics (load average, memory usage, disk space) as structured JSON.
+- **Arguments**:
+  - `host` (string, required): The SSH host alias to query.
+- **Returns**: A JSON object containing `load_averages`, `memory` stats, and a list of `disks` filesystems and their usage.
+
+### 8. `list_ports`
+List active listening TCP and UDP ports on a remote host, with optional filtering by port number.
+- **Arguments**:
+  - `host` (string, required): The SSH host alias to query.
+  - `port` (integer, optional): Optional port number to filter by.
+- **Returns**: A JSON array of active port listener objects (protocol, local address, port, and process/PID if permission allows).
+
 ---
 
 ## Running Tests
