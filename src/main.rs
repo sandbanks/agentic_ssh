@@ -1,11 +1,11 @@
-use std::time::Duration;
 use mimalloc::MiMalloc;
+use std::time::Duration;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
-mod errors;
 mod agents;
+mod errors;
 mod mcp_server;
 mod ssh_config;
 mod ssh_pool;
@@ -103,10 +103,13 @@ async fn main() -> anyhow::Result<()> {
         Some(Commands::Install { agent, local }) => {
             let home = crate::agents::home_dir()
                 .ok_or_else(|| anyhow::anyhow!("Could not determine user's home directory"))?;
-            let agentic_ssh_bin = crate::agents::which_agentic_ssh()
-                .ok_or_else(|| anyhow::anyhow!("Could not locate the `agentic_ssh` binary in PATH or current directory"))?;
+            let agentic_ssh_bin = crate::agents::which_agentic_ssh().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Could not locate the `agentic_ssh` binary in PATH or current directory"
+                )
+            })?;
             let tool_permissions = crate::agents::expected_tool_perms();
-            
+
             let scope = if local {
                 let project_path = std::env::current_dir()?;
                 crate::agents::InstallScope::Local { project_path }
@@ -123,43 +126,73 @@ async fn main() -> anyhow::Result<()> {
 
             if let Some(opt) = agent {
                 let id = opt.to_str();
-                let integration = crate::agents::get_integration(id)
-                    .map_err(|e| anyhow::anyhow!("{}", e))?;
+                let integration =
+                    crate::agents::get_integration(id).map_err(|e| anyhow::anyhow!("{}", e))?;
                 if local && !integration.supports_local() {
-                    anyhow::bail!("Agent '{}' does not support project-scoped (--local) installation.", id);
+                    anyhow::bail!(
+                        "Agent '{}' does not support project-scoped (--local) installation.",
+                        id
+                    );
                 }
-                eprintln!("Installing agentic_ssh MCP server for {}...", integration.name());
-                integration.install(&ctx).map_err(|e| anyhow::anyhow!("{}", e))?;
-                eprintln!("Successfully configured agentic_ssh for {}!", integration.name());
+                eprintln!(
+                    "Installing agentic_ssh MCP server for {}...",
+                    integration.name()
+                );
+                integration
+                    .install(&ctx)
+                    .map_err(|e| anyhow::anyhow!("{}", e))?;
+                eprintln!(
+                    "Successfully configured agentic_ssh for {}!\n",
+                    integration.name()
+                );
             } else {
                 // Auto-detect
                 let all = crate::agents::all_integrations();
                 let mut detected = Vec::new();
                 for integration in all {
-                    if integration.is_detected(&ctx.home) && (!local || integration.supports_local()) {
+                    if integration.is_detected(&ctx.home)
+                        && (!local || integration.supports_local())
+                    {
                         detected.push(integration);
                     }
                 }
 
                 if detected.is_empty() {
-                    anyhow::bail!("No supported AI agents were auto-detected on this system. Please specify which agent to configure using '--agent <AGENT>'.");
+                    anyhow::bail!(
+                        "No supported AI agents were auto-detected on this system. Please specify which agent to configure using '--agent <AGENT>'."
+                    );
                 }
 
-                eprintln!("Auto-detected agents: {}", detected.iter().map(|a| a.name()).collect::<Vec<_>>().join(", "));
+                eprintln!(
+                    "Auto-detected agents: {}\n",
+                    detected
+                        .iter()
+                        .map(|a| a.name())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
                 for integration in detected {
-                    eprintln!("Installing agentic_ssh MCP server for {}...", integration.name());
-                    integration.install(&ctx).map_err(|e| anyhow::anyhow!("{}", e))?;
-                    eprintln!("Successfully configured agentic_ssh for {}!", integration.name());
+                    eprintln!(
+                        "Installing agentic_ssh MCP server for {}...",
+                        integration.name()
+                    );
+                    integration
+                        .install(&ctx)
+                        .map_err(|e| anyhow::anyhow!("{}", e))?;
+                    eprintln!(
+                        "Successfully configured agentic_ssh for {}!\n",
+                        integration.name()
+                    );
                 }
             }
         }
         Some(Commands::Uninstall { agent, local }) => {
             let home = crate::agents::home_dir()
                 .ok_or_else(|| anyhow::anyhow!("Could not determine user's home directory"))?;
-            let agentic_ssh_bin = crate::agents::which_agentic_ssh()
-                .unwrap_or_else(|| "agentic_ssh".to_string());
+            let agentic_ssh_bin =
+                crate::agents::which_agentic_ssh().unwrap_or_else(|| "agentic_ssh".to_string());
             let tool_permissions = crate::agents::expected_tool_perms();
-            
+
             let scope = if local {
                 let project_path = std::env::current_dir()?;
                 crate::agents::InstallScope::Local { project_path }
@@ -176,33 +209,63 @@ async fn main() -> anyhow::Result<()> {
 
             if let Some(opt) = agent {
                 let id = opt.to_str();
-                let integration = crate::agents::get_integration(id)
-                    .map_err(|e| anyhow::anyhow!("{}", e))?;
+                let integration =
+                    crate::agents::get_integration(id).map_err(|e| anyhow::anyhow!("{}", e))?;
                 if local && !integration.supports_local() {
-                    anyhow::bail!("Agent '{}' does not support project-scoped (--local) installation.", id);
+                    anyhow::bail!(
+                        "Agent '{}' does not support project-scoped (--local) installation.",
+                        id
+                    );
                 }
-                eprintln!("Uninstalling agentic_ssh MCP server for {}...", integration.name());
-                integration.uninstall(&ctx).map_err(|e| anyhow::anyhow!("{}", e))?;
-                eprintln!("Successfully uninstalled agentic_ssh from {}!", integration.name());
+                eprintln!(
+                    "Uninstalling agentic_ssh MCP server for {}...",
+                    integration.name()
+                );
+                integration
+                    .uninstall(&ctx)
+                    .map_err(|e| anyhow::anyhow!("{}", e))?;
+                eprintln!(
+                    "Successfully uninstalled agentic_ssh from {}!",
+                    integration.name()
+                );
             } else {
                 // Auto-detect
                 let all = crate::agents::all_integrations();
                 let mut detected = Vec::new();
                 for integration in all {
-                    if integration.is_detected(&ctx.home) && (!local || integration.supports_local()) {
+                    if integration.is_detected(&ctx.home)
+                        && (!local || integration.supports_local())
+                    {
                         detected.push(integration);
                     }
                 }
 
                 if detected.is_empty() {
-                    anyhow::bail!("No supported AI agents were auto-detected on this system. Please specify which agent to uninstall using '--agent <AGENT>'.");
+                    anyhow::bail!(
+                        "No supported AI agents were auto-detected on this system. Please specify which agent to uninstall using '--agent <AGENT>'."
+                    );
                 }
 
-                eprintln!("Auto-detected agents: {}", detected.iter().map(|a| a.name()).collect::<Vec<_>>().join(", "));
+                eprintln!(
+                    "Auto-detected agents: {}",
+                    detected
+                        .iter()
+                        .map(|a| a.name())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
                 for integration in detected {
-                    eprintln!("Uninstalling agentic_ssh MCP server from {}...", integration.name());
-                    integration.uninstall(&ctx).map_err(|e| anyhow::anyhow!("{}", e))?;
-                    eprintln!("Successfully uninstalled agentic_ssh from {}!", integration.name());
+                    eprintln!(
+                        "Uninstalling agentic_ssh MCP server from {}...",
+                        integration.name()
+                    );
+                    integration
+                        .uninstall(&ctx)
+                        .map_err(|e| anyhow::anyhow!("{}", e))?;
+                    eprintln!(
+                        "Successfully uninstalled agentic_ssh from {}!",
+                        integration.name()
+                    );
                 }
             }
         }
@@ -237,10 +300,9 @@ fn run_tui() -> anyhow::Result<()> {
                 .unwrap_or_default()
                 .as_secs();
 
-            if let Some(statuses) = std::fs::File::open(path)
-                .ok()
-                .and_then(|file| serde_json::from_reader::<_, Vec<ssh_pool::ConnectionStatus>>(file).ok())
-            {
+            if let Some(statuses) = std::fs::File::open(path).ok().and_then(|file| {
+                serde_json::from_reader::<_, Vec<ssh_pool::ConnectionStatus>>(file).ok()
+            }) {
                 for status in statuses {
                     let elapsed_secs = now_unix.saturating_sub(status.last_used_timestamp);
                     let remaining_secs = status.idle_timeout_secs.saturating_sub(elapsed_secs);
@@ -264,11 +326,18 @@ fn run_tui() -> anyhow::Result<()> {
         let border_bot = format!("└{}┘", "─".repeat(inner_width));
 
         println!("{}", border_top);
-        println!("│{:^width$}│", "agentic_ssh Connection Pool", width = inner_width);
+        println!(
+            "│{:^width$}│",
+            "agentic_ssh Connection Pool",
+            width = inner_width
+        );
         println!("{}", border_mid);
         println!(
             "│ {:<width$} │ {:<12} │ {:<12} │ {:<10} │",
-            "Host", "Last Used", "Auto-Close", "Status",
+            "Host",
+            "Last Used",
+            "Auto-Close",
+            "Status",
             width = max_host_len
         );
         println!("{}", border_mid);
@@ -279,12 +348,19 @@ fn run_tui() -> anyhow::Result<()> {
             let colored = padded.replace(msg, "\x1B[31m[Daemon Inactive / Offline]\x1B[0m");
             println!("│{}│", colored);
         } else if active_connections.is_empty() {
-            println!("│{:^width$}│", "No active connections in the pool", width = inner_width);
+            println!(
+                "│{:^width$}│",
+                "No active connections in the pool",
+                width = inner_width
+            );
         } else {
             for (host, last_used_str, auto_close_str) in &active_connections {
                 println!(
                     "│ {:<width$} │ {:<12} │ {:<12} │ \x1B[32m{:<10}\x1B[0m │",
-                    host, last_used_str, auto_close_str, "Active",
+                    host,
+                    last_used_str,
+                    auto_close_str,
+                    "Active",
                     width = max_host_len
                 );
             }
