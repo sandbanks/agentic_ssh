@@ -242,6 +242,39 @@ impl McpServer {
                             }
                         },
                         {
+                            "name": "run_command_multi",
+                            "description": "Execute a shell command on multiple SSH hosts concurrently. Returns tagged JSON responses.",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "hosts": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "The SSH host aliases from ~/.ssh/config to run the command on"
+                                    },
+                                    "command": {
+                                        "type": "string",
+                                        "description": "The command to run on the remote hosts"
+                                    },
+                                    "timeout_seconds": {
+                                        "type": "integer",
+                                        "description": "The timeout per command in seconds (default: 15)"
+                                    },
+                                    "abbreviate": {
+                                        "type": "boolean",
+                                        "description": "If true, abbreviate extremely long stdout (defaults to false)"
+                                    },
+                                    "max_lines": {
+                                        "type": "integer",
+                                        "description": "Maximum lines of stdout to retain when abbreviate is true (default: 100)"
+                                    }
+                                },
+                                "required": ["hosts", "command"]
+                            }
+                        },
+                        {
                             "name": "search_processes",
                             "description": "Search running processes on a remote host. USE THIS instead of running ps/grep manually. Returns structured JSON to save tokens.",
                             "inputSchema": {
@@ -664,6 +697,106 @@ impl McpServer {
                         "isError": true
                     })),
                 }
+            }
+            "run_command_multi" => {
+                let hosts_val = arguments
+                    .get("hosts")
+                    .ok_or_else(|| anyhow::anyhow!("Missing 'hosts' argument"))?;
+
+                let hosts: Vec<String> = if let Some(arr) = hosts_val.as_array() {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                } else if let Some(s) = hosts_val.as_str() {
+                    vec![s.to_string()]
+                } else {
+                    anyhow::bail!("Invalid 'hosts' argument: must be an array of strings or a single string");
+                };
+
+                let command = arguments
+                    .get("command")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Missing 'command' argument"))?
+                    .to_string();
+
+                let timeout_secs = arguments
+                    .get("timeout_seconds")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(15);
+
+                let abbreviate = arguments
+                    .get("abbreviate")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+
+                let max_lines = arguments
+                    .get("max_lines")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize)
+                    .unwrap_or(100);
+
+                let mut join_set = tokio::task::JoinSet::new();
+                for host in hosts {
+                    let pool = self.pool.clone();
+                    let cmd = command.clone();
+                    join_set.spawn(async move {
+                        let exec_fut = pool.execute_command(&host, &cmd);
+                        let timeout_dur = std::time::Duration::from_secs(timeout_secs);
+                        let result = tokio::time::timeout(timeout_dur, exec_fut).await;
+
+                        let payload = match result {
+                            Ok(Ok((stdout, stderr, exit_code))) => {
+                                let stdout_final = if abbreviate {
+                                    abbreviate_output(&stdout, max_lines)
+                                } else {
+                                    stdout
+                                };
+                                serde_json::json!({
+                                    "status": "success",
+                                    "exit_code": exit_code,
+                                    "stdout": stdout_final,
+                                    "stderr": stderr
+                                })
+                            }
+                            Ok(Err(e)) => {
+                                serde_json::json!({
+                                    "status": "error",
+                                    "error": format!("{:#}", e)
+                                })
+                            }
+                            Err(_) => {
+                                serde_json::json!({
+                                    "status": "timeout",
+                                    "error": format!("Command execution timed out after {} seconds", timeout_secs)
+                                })
+                            }
+                        };
+                        (host, payload)
+                    });
+                }
+
+                let mut results_map = serde_json::Map::new();
+                while let Some(res) = join_set.join_next().await {
+                    match res {
+                        Ok((host, payload)) => {
+                            results_map.insert(host, payload);
+                        }
+                        Err(e) => {
+                            eprintln!("Task join error in run_command_multi: {:?}", e);
+                        }
+                    }
+                }
+
+                let text = serde_json::to_string_pretty(&serde_json::Value::Object(results_map))?;
+                Ok(serde_json::json!({
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": text
+                        }
+                    ],
+                    "isError": false
+                }))
             }
             "search_processes" => {
                 let host = arguments
@@ -1421,5 +1554,22 @@ udp   UNCONN 0      0            0.0.0.0:53          0.0.0.0:*     users:((\"nam
         let filtered = parse_listening_ports(raw_ss, Some(53));
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].port, 53);
+    }
+
+    #[tokio::test]
+    async fn test_run_command_multi_logic() {
+        let hosts_val = serde_json::json!(["host1", "host2"]);
+        let hosts: Vec<String> = hosts_val.as_array().unwrap().iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect();
+        assert_eq!(hosts, vec!["host1".to_string(), "host2".to_string()]);
+
+        let single_host_val = serde_json::json!("host1");
+        let single_host: Vec<String> = if let Some(arr) = single_host_val.as_array() {
+            arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect()
+        } else if let Some(s) = single_host_val.as_str() {
+            vec![s.to_string()]
+        } else {
+            vec![]
+        };
+        assert_eq!(single_host, vec!["host1".to_string()]);
     }
 }

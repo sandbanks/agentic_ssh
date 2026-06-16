@@ -1526,6 +1526,7 @@ pub fn tool_names() -> Vec<String> {
     vec![
         "list_hosts".to_string(),
         "run_command".to_string(),
+        "run_command_multi".to_string(),
         "search_processes".to_string(),
         "tail_log".to_string(),
         "tail_container_logs".to_string(),
