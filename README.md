@@ -179,6 +179,12 @@ name = "list_cron_jobs"
 description = "List all cron jobs for current user and root"
 command = "crontab -l 2>/dev/null; echo '=== ROOT ==='; sudo crontab -l 2>/dev/null"
 #Use case: Agent needs to list cron jobs for current user and root.
+
+[[custom_tools]]
+name = "get_disk_usage"
+description = "Get detailed disk usage for all mount points. USE THIS for full disk info."
+command = "df -kP"
+#Use case: Agent needs detailed disk usage across all filesystems.
 ```
 
 ### Custom Tools / Command Abbreviations

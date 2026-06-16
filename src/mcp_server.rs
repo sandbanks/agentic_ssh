@@ -601,7 +601,7 @@ impl McpServer {
                     move |host: String| {
                         let pool = pool.clone();
                         async move {
-                            let cmd = "echo '=== LOAD ===' && (cat /proc/loadavg 2>/dev/null || uptime) && echo '=== MEM ===' && (cat /proc/meminfo 2>/dev/null || free -k 2>/dev/null) && echo '=== DISK ===' && df -kP";
+                            let cmd = "echo '=== LOAD ===' && (cat /proc/loadavg 2>/dev/null || uptime) && echo '=== MEM ===' && (cat /proc/meminfo 2>/dev/null || free -k 2>/dev/null) && echo '=== DISK ===' && df -kP /";
                             let (stdout, stderr, exit_code) = pool.execute_command(&host, cmd).await?;
                             if exit_code != 0 {
                                 anyhow::bail!("Error executing stats command (exit code {}):\n{}", exit_code, stderr);
