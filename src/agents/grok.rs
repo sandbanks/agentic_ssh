@@ -41,8 +41,7 @@ impl AgentIntegration for GrokIntegration {
 
         eprintln!();
         eprintln!("Setup complete. Next steps:");
-        eprintln!("  1. cd into your project and run: agentic_ssh init");
-        eprintln!("  2. Start a new Grok Build session — agentic_ssh tools are now available via search_tool + use_tool");
+        eprintln!("  1. Start a new Grok Build session — agentic_ssh tools are now available via search_tool + use_tool");
         Ok(())
     }
 

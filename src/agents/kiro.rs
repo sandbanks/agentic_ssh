@@ -128,8 +128,7 @@ impl AgentIntegration for KiroIntegration {
 
         eprintln!();
         eprintln!("Setup complete. Next steps:");
-        eprintln!("  1. cd into your project and run: agentic_ssh init");
-        eprintln!("  2. Start a new Kiro session");
+        eprintln!("  1. Start a new Kiro session");
         eprintln!("     agentic_ssh tools are now available through Kiro MCP");
         eprintln!(
             "     the agentic_ssh Kiro agent includes hooks for delegation guardrails and sync"

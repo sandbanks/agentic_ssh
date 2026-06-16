@@ -94,7 +94,6 @@ impl AgentIntegration for AntigravityIntegration {
 
         eprintln!();
         eprintln!("Setup complete. Next steps:");
-        eprintln!("  1. cd into your project and run: agentic_ssh init");
         eprintln!(
             "  2. Restart Antigravity (IDE or `agy` CLI) — agentic_ssh tools are now available"
         );

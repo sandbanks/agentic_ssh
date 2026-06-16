@@ -45,8 +45,7 @@ impl AgentIntegration for GeminiIntegration {
 
         eprintln!();
         eprintln!("Setup complete. Next steps:");
-        eprintln!("  1. cd into your project and run: agentic_ssh init");
-        eprintln!("  2. Start a new Gemini CLI session — agentic_ssh tools are now available");
+        eprintln!("  1. Start a new Gemini CLI session — agentic_ssh tools are now available");
         Ok(())
     }
 

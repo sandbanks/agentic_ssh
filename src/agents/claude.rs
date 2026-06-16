@@ -97,8 +97,7 @@ fn install_global(ctx: &InstallContext) -> Result<()> {
 
     eprintln!();
     eprintln!("Setup complete. Next steps:");
-    eprintln!("  1. cd into your project and run: agentic_ssh init");
-    eprintln!("  2. Start a new Claude Code session — agentic_ssh tools are now available");
+    eprintln!("  1. Start a new Claude Code session — agentic_ssh tools are now available");
     Ok(())
 }
 
@@ -126,7 +125,7 @@ fn install_local(ctx: &InstallContext, project: &Path) -> Result<()> {
         project.display()
     );
     eprintln!("  AgenticSsh is registered for this project only (./.mcp.json).");
-    eprintln!("  Run: agentic_ssh init   then start a new Claude Code session.");
+    eprintln!("  Start a new Claude Code session.");
     Ok(())
 }
 

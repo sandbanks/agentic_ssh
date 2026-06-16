@@ -62,8 +62,7 @@ impl AgentIntegration for ClineIntegration {
 
         eprintln!();
         eprintln!("Setup complete. Next steps:");
-        eprintln!("  1. cd into your project and run: agentic_ssh init");
-        eprintln!("  2. Restart VS Code — agentic_ssh tools are now available in Cline");
+        eprintln!("  1. Restart VS Code — agentic_ssh tools are now available in Cline");
         Ok(())
     }
 
