@@ -170,8 +170,11 @@ command = "crontab -l 2>/dev/null; echo '=== ROOT ==='; sudo crontab -l 2>/dev/n
 ### Custom Tools / Command Abbreviations
 When you define a table in `custom_tools`, the MCP server dynamically registers it as a first-class tool when the client calls `tools/list`. 
 Each custom tool automatically supports:
-1. `host` (string, required): The target SSH host.
-2. `args` (string, optional): Optional arguments. If the command template contains `{args}`, the placeholder is replaced by the value of `args`. Otherwise, if `args` is provided, it is appended to the command (separated by a space).
+1. `host` (string, optional): The target SSH host alias. Provide either `host` or `hosts`, but not both.
+2. `hosts` (array of strings, optional): Optional list of SSH host aliases from `~/.ssh/config` to query concurrently.
+3. `args` (string, optional): Optional arguments. If the command template contains `{args}`, the placeholder is replaced by the value of `args`. Otherwise, if `args` is provided, it is appended to the command (separated by a space).
+
+If `hosts` is used, the custom tool executes concurrently on all specified hosts and returns a JSON map mapping each host to its result status and output data.
 
 This allows developers to extend the MCP server without writing Rust code, simplifying agent usage and saving prompt tokens.
 
@@ -183,7 +186,23 @@ For development or automated setups, you can override settings using environment
 
 ## Available Tools
 
-The MCP server exposes two main tools to connected agents:
+The MCP server exposes native tools supporting both **single-host execution** (using the `host` parameter) and **concurrent multi-host execution** (using the `hosts` parameter). 
+
+> [!NOTE]
+> When executing on multiple hosts concurrently via the `hosts` argument, the response is a tagged JSON object mapping each host to its result payload:
+> ```json
+> {
+>   "host1": {
+>     "status": "success",
+>     "data": <normal_data_payload_or_stdout>
+>   },
+>   "host2": {
+>     "status": "error",
+>     "error": "Failed to connect: ..."
+>   }
+> }
+> ```
+> Single-host execution using the `host` argument retains the original return format (plain text or structured JSON) for backward compatibility.
 
 ### 1. `list_hosts`
 Lists all explicit SSH host aliases configured in your `~/.ssh/config` file.
@@ -191,76 +210,82 @@ Lists all explicit SSH host aliases configured in your `~/.ssh/config` file.
 - **Returns**: A JSON array of host strings (e.g., `["server-a", "web-server", "db-prod"]`).
 
 ### 2. `run_command`
-Executes a shell command on one of the configured hosts.
+Executes a shell command on one or multiple configured hosts.
 - **Arguments**:
-  - `host` (string, required): The SSH host alias from `~/.ssh/config` to run the command on.
+  - `host` (string, optional): The SSH host alias to run the command on.
+  - `hosts` (array of strings, optional): Optional list of SSH host aliases to run the command on concurrently.
   - `command` (string, required): The command to execute.
   - `abbreviate` (boolean, optional): If `true`, truncates extremely long stdout outputs. Defaults to `false`.
   - `max_lines` (integer, optional): Maximum number of lines to retain when `abbreviate` is true. Defaults to `100`.
-- **Returns**: A JSON object containing:
-  ```json
-  {
-    "stdout": "...",
-    "stderr": "...",
-    "exit_code": 0
-  }
-  ```
+- **Returns**:
+  - *Single host*: A JSON object containing `stdout`, `stderr`, and `exit_code`.
+  - *Multi-host*: A JSON object mapping hostnames to their respective results.
 
 ### 3. `search_processes`
-Searches running processes on a remote host matching a pattern or regex, returning a structured JSON result list. Saves a massive amount of context tokens compared to dumping raw `ps` lists.
+Searches running processes on a single host or multiple hosts matching a pattern or regex, returning a structured JSON result list.
 - **Arguments**:
-  - `host` (string, required): The SSH host alias from `~/.ssh/config` to query.
+  - `host` (string, optional): The SSH host alias to query.
+  - `hosts` (array of strings, optional): Optional list of SSH host aliases to query concurrently.
   - `pattern` (string, required): A regex or substring pattern to filter process command lines (case-insensitive).
   - `full_info` (boolean, optional): If `true`, returns detailed statistics (`pid`, `user`, `cpu`, `mem`, `command`). If `false`, returns a concise list of `pid` and `command`. Defaults to `false`.
-- **Returns**: A JSON array of matching process objects, e.g.:
-  ```json
-  [
-    {
-      "pid": 512,
-      "command": "/usr/local/bin/localmail serve --port 80"
-    }
-  ]
-  ```
+- **Returns**:
+  - *Single host*: A JSON array of matching process objects.
+  - *Multi-host*: A JSON object mapping hostnames to their respective arrays of process objects.
 
 ### 4. `tail_log`
 Fetch the last N lines of a remote log file.
 - **Arguments**:
-  - `host` (string, required): The SSH host alias from `~/.ssh/config` to query.
+  - `host` (string, optional): The SSH host alias to query.
+  - `hosts` (array of strings, optional): Optional list of SSH host aliases to query concurrently.
   - `file_path` (string, required): The absolute path of the remote log file.
   - `lines` (integer, optional): Number of lines to retrieve (default: 50).
-- **Returns**: The tail output text.
+- **Returns**:
+  - *Single host*: The tail output text.
+  - *Multi-host*: A JSON object mapping hostnames to their respective statuses and log outputs.
 
 ### 5. `tail_container_logs`
 Fetch the last N lines of logs from a remote Docker container.
 - **Arguments**:
-  - `host` (string, required): The SSH host alias from `~/.ssh/config` to query.
+  - `host` (string, optional): The SSH host alias to query.
+  - `hosts` (array of strings, optional): Optional list of SSH host aliases to query concurrently.
   - `container` (string, required): The Docker container name or ID.
   - `lines` (integer, optional): Number of lines to retrieve (default: 50).
   - `timestamps` (boolean, optional): Include timestamps in log output (default: false).
-- **Returns**: The container logs output text.
+- **Returns**:
+  - *Single host*: The container logs output text.
+  - *Multi-host*: A JSON object mapping hostnames to their respective statuses and container logs.
 
 ### 6. `wait_for_log_pattern`
-Streams a remote log file or Docker container logs and blocks until a regex pattern is matched or a timeout occurs. Extremely efficient for waiting for specific events (e.g. "server started") without polling or streaming full logs to the LLM.
+Streams a remote log file or Docker container logs and blocks until a regex pattern is matched or a timeout occurs.
 - **Arguments**:
-  - `host` (string, required): The SSH host alias from `~/.ssh/config` to query.
+  - `host` (string, optional): The SSH host alias to query.
+  - `hosts` (array of strings, optional): Optional list of SSH host aliases to query concurrently.
   - `file_path` (string, optional): Absolute path of log file (specify either `file_path` or `container`).
   - `container` (string, optional): Docker container name/ID (specify either `file_path` or `container`).
   - `pattern` (string, required): The regex pattern to wait for (case-insensitive).
   - `timeout_secs` (integer, optional): Maximum seconds to wait before timeout (default: 30).
-- **Returns**: A confirmation string showing the matching line, or a timeout message.
+- **Returns**:
+  - *Single host*: A confirmation string showing the matching line, or a timeout message.
+  - *Multi-host*: A JSON object mapping hostnames to their respective matched line or error/timeout messages.
 
 ### 7. `get_system_stats`
 Fetch remote system statistics (load average, memory usage, disk space) as structured JSON.
 - **Arguments**:
-  - `host` (string, required): The SSH host alias to query.
-- **Returns**: A JSON object containing `load_averages`, `memory` stats, and a list of `disks` filesystems and their usage.
+  - `host` (string, optional): The SSH host alias to query.
+  - `hosts` (array of strings, optional): Optional list of SSH host aliases to query concurrently.
+- **Returns**:
+  - *Single host*: A JSON object containing `load_averages`, `memory` stats, and a list of `disks` filesystems and their usage.
+  - *Multi-host*: A JSON object mapping hostnames to system stats objects.
 
 ### 8. `list_ports`
 List active listening TCP and UDP ports on a remote host, with optional filtering by port number.
 - **Arguments**:
-  - `host` (string, required): The SSH host alias to query.
+  - `host` (string, optional): The SSH host alias to query.
+  - `hosts` (array of strings, optional): Optional list of SSH host aliases to query concurrently.
   - `port` (integer, optional): Optional port number to filter by.
-- **Returns**: A JSON array of active port listener objects (protocol, local address, port, and process/PID if permission allows).
+- **Returns**:
+  - *Single host*: A JSON array of active port listener objects.
+  - *Multi-host*: A JSON object mapping hostnames to listener arrays.
 
 ### 9. `run_command_multi`
 Executes a shell command on multiple SSH hosts concurrently.

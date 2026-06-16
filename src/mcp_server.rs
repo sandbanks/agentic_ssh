@@ -217,22 +217,22 @@ impl McpServer {
                         },
                         {
                             "name": "run_command",
-                            "description": "Execute a shell command on an SSH host or multiple SSH hosts concurrently. Uses pooled connection.",
+                            "description": "Execute a shell command on a single host via 'host' or multiple hosts concurrently via 'hosts'. Prefer 'hosts' to query multiple machines simultaneously. If 'hosts' is provided, returns a JSON object mapping hostnames to their respective results (status, stdout, stderr, exit_code).",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
                                     "host": {
                                         "type": "string",
-                                        "description": "The SSH host alias from ~/.ssh/config to run the command on"
+                                        "description": "SSH host alias from ~/.ssh/config. Provide either 'host' or 'hosts', but not both."
                                     },
                                     "hosts": {
                                         "type": "array",
                                         "items": { "type": "string" },
-                                        "description": "Optional: list of SSH hosts to run the command on concurrently"
+                                        "description": "Array of SSH host aliases from ~/.ssh/config to query concurrently. Returns tagged JSON mapping host to result."
                                     },
                                     "command": {
                                         "type": "string",
-                                        "description": "The command to run on the remote host"
+                                        "description": "The command to run on the remote host(s)"
                                     },
                                     "abbreviate": {
                                         "type": "boolean",
@@ -281,18 +281,18 @@ impl McpServer {
                         },
                         {
                             "name": "search_processes",
-                            "description": "Search running processes on a remote host or multiple hosts concurrently. Returns structured JSON.",
+                            "description": "Search running processes matching a pattern/regex on a single host via 'host' or multiple hosts concurrently via 'hosts'. Filter processes by regex 'pattern' case-insensitively. If using 'hosts', returns a JSON map mapping hostnames to their respective array of matching process objects. Prefer 'hosts' to query multiple machines simultaneously.",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
                                     "host": {
                                         "type": "string",
-                                        "description": "The SSH host to query"
+                                        "description": "SSH host alias from ~/.ssh/config. Provide either 'host' or 'hosts', but not both."
                                     },
                                     "hosts": {
                                         "type": "array",
                                         "items": { "type": "string" },
-                                        "description": "Optional: list of SSH hosts to query concurrently"
+                                        "description": "Array of SSH host aliases from ~/.ssh/config to query concurrently. Returns tagged JSON mapping host to result."
                                     },
                                     "pattern": {
                                         "type": "string",
@@ -308,18 +308,18 @@ impl McpServer {
                         },
                         {
                             "name": "tail_log",
-                            "description": "Fetch the last N lines of a remote log file as plain text (or tagged JSON for multiple hosts).",
+                            "description": "Fetch the last N lines of a remote log file from a single host ('host') or multiple hosts concurrently ('hosts'). If using 'hosts', returns a JSON map mapping hostnames to their success status and log output. Prefer 'hosts' to monitor logs on multiple machines simultaneously.",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
                                     "host": {
                                         "type": "string",
-                                        "description": "The SSH host to query"
+                                        "description": "SSH host alias from ~/.ssh/config. Provide either 'host' or 'hosts', but not both."
                                     },
                                     "hosts": {
                                         "type": "array",
                                         "items": { "type": "string" },
-                                        "description": "Optional: list of SSH hosts to query concurrently"
+                                        "description": "Array of SSH host aliases from ~/.ssh/config to query concurrently. Returns tagged JSON mapping host to result."
                                     },
                                     "file_path": {
                                         "type": "string",
@@ -335,18 +335,18 @@ impl McpServer {
                         },
                         {
                             "name": "tail_container_logs",
-                            "description": "Fetch the last N lines of logs from a remote Docker container (or tagged JSON for multiple hosts).",
+                            "description": "Fetch the last N lines of logs from a remote Docker container on a single host ('host') or multiple hosts concurrently ('hosts'). If using 'hosts', returns a JSON map mapping hostnames to their success status and container log output. Prefer 'hosts' to query container logs across multiple machines simultaneously.",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
                                     "host": {
                                         "type": "string",
-                                        "description": "The SSH host to query"
+                                        "description": "SSH host alias from ~/.ssh/config. Provide either 'host' or 'hosts', but not both."
                                     },
                                     "hosts": {
                                         "type": "array",
                                         "items": { "type": "string" },
-                                        "description": "Optional: list of SSH hosts to query concurrently"
+                                        "description": "Array of SSH host aliases from ~/.ssh/config to query concurrently. Returns tagged JSON mapping host to result."
                                     },
                                     "container": {
                                         "type": "string",
@@ -366,18 +366,18 @@ impl McpServer {
                         },
                         {
                             "name": "wait_for_log_pattern",
-                            "description": "Blocks until a regex pattern appears in a log file or Docker container. Returns only the matching line when found, or a timeout message.",
+                            "description": "Blocks and streams a remote log file or Docker container logs on a single host ('host') or multiple hosts concurrently ('hosts') until a regex 'pattern' is matched or a timeout is reached. If using 'hosts', returns a JSON map of hostnames to success/error/timeout statuses containing the matched line. Extremely useful for verifying startup or events across cluster nodes without polling.",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
                                     "host": {
                                         "type": "string",
-                                        "description": "The SSH host to query"
+                                        "description": "SSH host alias from ~/.ssh/config. Provide either 'host' or 'hosts', but not both."
                                     },
                                     "hosts": {
                                         "type": "array",
                                         "items": { "type": "string" },
-                                        "description": "Optional: list of SSH hosts to query concurrently"
+                                        "description": "Array of SSH host aliases from ~/.ssh/config to query concurrently. Returns tagged JSON mapping host to result."
                                     },
                                     "file_path": {
                                         "type": "string",
@@ -401,18 +401,18 @@ impl McpServer {
                         },
                         {
                             "name": "get_system_stats",
-                            "description": "Fetch remote system statistics (load average, memory usage, disk space) as structured JSON.",
+                            "description": "Fetch remote system statistics (load averages, memory, and disk usage) on a single host ('host') or multiple hosts concurrently ('hosts'). If using 'hosts', returns a JSON map mapping hostnames to system stats objects. Prefer 'hosts' to get health/metrics for multiple servers concurrently.",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
                                     "host": {
                                         "type": "string",
-                                        "description": "The SSH host to query"
+                                        "description": "SSH host alias from ~/.ssh/config. Provide either 'host' or 'hosts', but not both."
                                     },
                                     "hosts": {
                                         "type": "array",
                                         "items": { "type": "string" },
-                                        "description": "Optional: list of SSH hosts to query concurrently"
+                                        "description": "Array of SSH host aliases from ~/.ssh/config to query concurrently. Returns tagged JSON mapping host to result."
                                     }
                                 },
                                 "required": []
@@ -420,18 +420,18 @@ impl McpServer {
                         },
                         {
                             "name": "list_ports",
-                            "description": "List active listening TCP and UDP ports on a remote host, with optional filtering by port number.",
+                            "description": "List active listening TCP and UDP ports on a single host ('host') or multiple hosts concurrently ('hosts'), with optional port filtering. If using 'hosts', returns a JSON map mapping hostnames to listening ports arrays. Prefer 'hosts' to scan ports or debug connections across multiple systems simultaneously.",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
                                     "host": {
                                         "type": "string",
-                                        "description": "The SSH host to query"
+                                        "description": "SSH host alias from ~/.ssh/config. Provide either 'host' or 'hosts', but not both."
                                     },
                                     "hosts": {
                                         "type": "array",
                                         "items": { "type": "string" },
-                                        "description": "Optional: list of SSH hosts to query concurrently"
+                                        "description": "Array of SSH host aliases from ~/.ssh/config to query concurrently. Returns tagged JSON mapping host to result."
                                     },
                                     "port": {
                                         "type": "integer",
