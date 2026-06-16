@@ -40,9 +40,52 @@ This builds the binary and places it in your Cargo binary directory (typically `
 
 ## MCP Configuration
 
-To register `agentic_ssh` with an MCP client (such as Claude Desktop), add it to your configuration file:
+### Automated Installation (Recommended)
 
-### Claude Desktop Configuration
+`agentic_ssh` provides built-in commands to automatically detect and register itself with supported AI agents (e.g. Claude Desktop, Claude Code, Cursor, Zed, Cline, Roo Code, Gemini CLI, Grok, etc.).
+
+```bash
+# Auto-detect all supported agents on your system and register agentic_ssh
+agentic_ssh install
+
+# Register specifically for a particular agent:
+agentic_ssh install --agent claude
+agentic_ssh install --agent cursor
+agentic_ssh install --agent zed
+
+# Or install project-scoped (local) configs:
+agentic_ssh install --agent zed --local
+```
+
+Use `agentic_ssh uninstall` to remove the registration:
+```bash
+agentic_ssh uninstall
+# Or for a specific agent:
+agentic_ssh uninstall --agent claude
+```
+
+Supported agents for the `--agent` flag:
+- `claude` (Claude Code / Claude Desktop)
+- `cursor`
+- `zed`
+- `cline`
+- `roo-code`
+- `gemini`
+- `copilot` (GitHub Copilot CLI)
+- `grok`
+- `kimi`
+- `kilo`
+- `kiro`
+- `vibe`
+- `opencode`
+- `codex`
+- `pi`
+- `antigravity`
+
+### Manual Configuration
+To manually register `agentic_ssh` with an MCP client (such as Claude Desktop), add it to your configuration file:
+
+#### Claude Desktop Configuration
 On macOS, edit `~/Library/Application Support/Claude/claude_desktop_config.json`. Note that Claude Desktop may require the absolute path to your home directory instead of `~`:
 
 ```json
@@ -218,6 +261,16 @@ List active listening TCP and UDP ports on a remote host, with optional filterin
   - `host` (string, required): The SSH host alias to query.
   - `port` (integer, optional): Optional port number to filter by.
 - **Returns**: A JSON array of active port listener objects (protocol, local address, port, and process/PID if permission allows).
+
+### 9. `run_command_multi`
+Executes a shell command on multiple SSH hosts concurrently.
+- **Arguments**:
+  - `hosts` (array of strings, required): The SSH host aliases from `~/.ssh/config` to run the command on.
+  - `command` (string, required): The command to execute.
+  - `timeout_seconds` (integer, optional): The timeout per command in seconds (default: 15).
+  - `abbreviate` (boolean, optional): If `true`, truncates extremely long stdout outputs. Defaults to `false`.
+  - `max_lines` (integer, optional): Maximum number of lines to retain when `abbreviate` is true. Defaults to `100`.
+- **Returns**: A JSON object mapping hostnames to their tagged execution results (status, exit_code, stdout, stderr, or error/timeout messages).
 
 ---
 
