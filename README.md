@@ -144,7 +144,7 @@ command = "systemctl status {args} 2>/dev/null || service {args} status 2>/dev/n
 
 [[custom_tools]]
 name = "find_large_files"
-description = ""Find files larger than N MB for disk cleanup. USE THIS instead of ssh + find. Pass size in MB (e.g., find_large_files 100)."
+description = "Find files larger than N MB for disk cleanup. USE THIS instead of ssh + find. Pass size in MB (e.g., find_large_files 100)."
 command = "find / -type f -size +{args}M -exec ls -lh {} + 2>/dev/null | sort -k5 -h | tail -20"
 #Use case: Agent needs to identify space hogs when a disk is full. Call with find_large_files 100 or find_large_files 500.
 
