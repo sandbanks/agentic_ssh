@@ -169,7 +169,7 @@ impl McpServer {
                     },
                     "serverInfo": {
                         "name": "agentic_ssh",
-                        "version": "0.1.0"
+                        "version": env!("CARGO_PKG_VERSION")
                     }
                 });
                 JsonRpcResponse {
@@ -447,7 +447,15 @@ impl McpServer {
             "list_hosts" => {
                 match list_ssh_hosts() {
                     Ok(hosts) => {
-                        let text = serde_json::to_string_pretty(&hosts)?;
+                        let ssh_config = crate::ssh_config::load_ssh_config().unwrap_or_default();
+                        let filtered_hosts: Vec<String> = hosts
+                            .into_iter()
+                            .filter(|h| {
+                                let real_host = ssh_config.query(h).host_name.as_deref().unwrap_or(h).to_string();
+                                !crate::ssh_pool::is_host_ignored(h, Some(&real_host))
+                            })
+                            .collect();
+                        let text = serde_json::to_string_pretty(&filtered_hosts)?;
                         Ok(serde_json::json!({
                             "content": [
                                 {

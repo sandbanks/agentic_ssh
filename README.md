@@ -62,6 +62,8 @@ On macOS, edit `~/Library/Application Support/Claude/claude_desktop_config.json`
 ### Configuration Options
 - `pool_status_path` (string): The path to write/read the connection pool status JSON file. Supports absolute paths or tilde expansion (`~/`). Defaults to `~/.agentic_ssh_pool_status.json`.
 - `custom_tools` (array of tables): Defines custom subcommands that dynamically register as first-class MCP tools.
+- `ignore_hosts` (array of strings): A list of wildcard/glob patterns matching host aliases or resolved hostname destinations that agents should be strictly prevented from listing or connecting to (denylist).
+- `allow_hosts` (array of strings): A list of wildcard/glob patterns (allowlist). If specified and not empty, the agent is strictly restricted *only* to hosts matching these patterns, blocking all others by default. (Also supports the alias `include_hosts`).
 
 Example `~/.config/agentic_ssh/config.toml`:
 ```toml
@@ -69,6 +71,13 @@ Example `~/.config/agentic_ssh/config.toml`:
 
 # Custom path to write the connection pool status JSON file
 pool_status_path = "~/.agentic_ssh_pool_status.json"
+
+# Option A: Block specific hosts, allowing others by default
+ignore_hosts = ["*.prod.company.com", "db-prod", "secure-*"]
+
+# Option B: Block all hosts by default, only allowing specific ones
+# ignore_hosts = ["*"]
+# allow_hosts = ["*.staging.company.com", "dev-sandbox"]
 
 # Register custom command abbreviations as first-class MCP tools
 [[custom_tools]]

@@ -35,6 +35,10 @@ pub struct Config {
     pub pool_status_path: Option<String>,
     #[serde(default)]
     pub custom_tools: Vec<CustomTool>,
+    #[serde(default)]
+    pub ignore_hosts: Vec<String>,
+    #[serde(default, alias = "include_hosts")]
+    pub allow_hosts: Vec<String>,
 }
 
 pub fn load_config() -> Config {
@@ -44,6 +48,61 @@ pub fn load_config() -> Config {
         .and_then(|path| std::fs::read_to_string(path).ok())
         .and_then(|content| toml::from_str::<Config>(&content).ok())
         .unwrap_or_default()
+}
+
+pub fn is_host_ignored(host: &str, resolved_host: Option<&str>) -> bool {
+    let config = load_config();
+    is_host_ignored_impl(host, resolved_host, &config.ignore_hosts, &config.allow_hosts)
+}
+
+fn is_host_ignored_impl(
+    host: &str,
+    resolved_host: Option<&str>,
+    ignore_hosts: &[String],
+    allow_hosts: &[String],
+) -> bool {
+    let host_lower = host.to_lowercase();
+    let resolved_lower = resolved_host.map(|s| s.to_lowercase());
+
+    // 1. If allowlist is not empty, host must match at least one allow pattern
+    if !allow_hosts.is_empty() {
+        let mut allowed = false;
+        for pattern_str in allow_hosts {
+            let pattern_lower = pattern_str.to_lowercase();
+            if let Ok(pattern) = glob::Pattern::new(&pattern_lower) {
+                if pattern.matches(&host_lower) {
+                    allowed = true;
+                    break;
+                }
+                if resolved_lower.as_ref().is_some_and(|res_host| pattern.matches(res_host)) {
+                    allowed = true;
+                    break;
+                }
+            }
+        }
+        if !allowed {
+            return true; // Blocked because it's not in the allowlist
+        }
+    }
+
+    // 2. If it matches any pattern in ignore_hosts, it is ignored
+    for pattern_str in ignore_hosts {
+        // If it's "*" and we already matched allowlist, skip it
+        if pattern_str == "*" && !allow_hosts.is_empty() {
+            continue;
+        }
+        let pattern_lower = pattern_str.to_lowercase();
+        if let Ok(pattern) = glob::Pattern::new(&pattern_lower) {
+            if pattern.matches(&host_lower) {
+                return true;
+            }
+            if resolved_lower.as_ref().is_some_and(|res_host| pattern.matches(res_host)) {
+                return true;
+            }
+        }
+    }
+
+    false
 }
 
 pub fn get_pool_status_path() -> std::path::PathBuf {
@@ -156,6 +215,16 @@ impl ConnectionPool {
 
     /// Gets or creates a connection to the specified host.
     pub async fn get_connection(&self, host: &str) -> Result<Arc<Handle<ClientHandler>>> {
+        let real_host = {
+            let ssh_config = crate::ssh_config::load_ssh_config().unwrap_or_default();
+            let params = ssh_config.query(host);
+            params.host_name.as_deref().unwrap_or(host).to_string()
+        };
+
+        if is_host_ignored(host, Some(&real_host)) {
+            return Err(anyhow!("Access to host '{}' (resolved: '{}') is blocked by ignore rules", host, real_host));
+        }
+
         let mut map = self.connections.lock().await;
         
         // Check if we have an active connection that's still working
@@ -395,6 +464,43 @@ mod tests {
         
         println!("WAITING 15 SECONDS FOR TUI DISPLAY... (Watch the TUI!)");
         tokio::time::sleep(Duration::from_secs(15)).await;
+    }
+
+    #[test]
+    fn test_is_host_ignored() {
+        let ignore_list = vec![
+            "*.prod.company.com".to_string(),
+            "secure-*".to_string(),
+            "db-prod".to_string(),
+        ];
+        let allow_list = vec![];
+
+        // Exact match
+        assert!(is_host_ignored_impl("db-prod", None, &ignore_list, &allow_list));
+        // Substring case insensitive
+        assert!(is_host_ignored_impl("DB-PROD", None, &ignore_list, &allow_list));
+
+        // Glob matches
+        assert!(is_host_ignored_impl("app.prod.company.com", None, &ignore_list, &allow_list));
+        assert!(is_host_ignored_impl("secure-host-1", None, &ignore_list, &allow_list));
+
+        // Resolved hostname match
+        assert!(is_host_ignored_impl("my-alias", Some("database.prod.company.com"), &ignore_list, &allow_list));
+        assert!(is_host_ignored_impl("my-alias", Some("SECURE-GATEWAY"), &ignore_list, &allow_list));
+
+        // Non-matching
+        assert!(!is_host_ignored_impl("dev-server", Some("10.0.0.5"), &ignore_list, &allow_list));
+        assert!(!is_host_ignored_impl("company.com", None, &ignore_list, &allow_list));
+
+        // Test allowlist block by default
+        let allow_list_2 = vec!["*.staging.company.com".to_string(), "my-host".to_string()];
+        assert!(!is_host_ignored_impl("my-host", None, &ignore_list, &allow_list_2));
+        assert!(is_host_ignored_impl("other-host", None, &ignore_list, &allow_list_2)); // Blocked by default because not in allowlist
+
+        // Test ignore all except allowlist
+        let ignore_all = vec!["*".to_string()];
+        assert!(!is_host_ignored_impl("my-host", None, &ignore_all, &allow_list_2)); // Allowed because it is in allowlist (even though ignore_all is *)
+        assert!(is_host_ignored_impl("other-host", None, &ignore_all, &allow_list_2)); // Blocked by default and by ignore_all
     }
 }
 

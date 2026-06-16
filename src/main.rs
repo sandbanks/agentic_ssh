@@ -11,9 +11,14 @@ mod ssh_pool;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
-    if args.len() > 1 && args[1] == "tui" {
-        run_tui()?;
-        return Ok(());
+    if args.len() > 1 {
+        if args[1] == "tui" {
+            run_tui()?;
+            return Ok(());
+        } else if args[1] == "--version" || args[1] == "-v" {
+            println!("agentic_ssh version {}", env!("CARGO_PKG_VERSION"));
+            return Ok(());
+        }
     }
 
     // We maintain a pool of open SSH connections, closing them after 5 minutes (300 seconds) of inactivity.
