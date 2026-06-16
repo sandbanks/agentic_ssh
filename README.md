@@ -236,3 +236,15 @@ cargo run --release -- tui
 # or:
 ./target/release/agentic_ssh tui
 ```
+
+---
+
+## Acknowledgments
+
+*Standing on the shoulders of giants...*
+
+- **Enzo** - MCP server installation code from tokensave
+- [Future credits here...]
+
+### License
+MIT / Apache 2.0
