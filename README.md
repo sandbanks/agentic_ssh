@@ -17,6 +17,20 @@ It also supports output abbreviation, which helps save tokens by truncating extr
 
 ---
 
+## Quick Start
+```bash
+# Install
+cargo install --git https://github.com/sandbanks/agentic_ssh
+
+# Auto-configure for your agent(s)
+agentic_ssh install
+
+# Verify it works
+# (in your agent: list_hosts)
+```
+
+---
+
 ## Installation
 
 Ensure you have Rust and Cargo installed (or use the Nix environment).

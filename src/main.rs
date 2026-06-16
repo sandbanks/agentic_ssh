@@ -70,6 +70,8 @@ struct Cli {
 enum Commands {
     /// Start the live TUI connection pool dashboard
     Tui,
+    /// Start the MCP server (default)
+    Serve,
     /// Install the MCP server configuration for AI agents
     Install {
         /// Agent to configure (auto-detects if omitted)
@@ -269,7 +271,7 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        None => {
+        Some(Commands::Serve) | None => {
             // We maintain a pool of open SSH connections, closing them after 5 minutes (300 seconds) of inactivity.
             let server = mcp_server::McpServer::new(Duration::from_secs(300));
             server.run().await?;
