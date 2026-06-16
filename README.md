@@ -82,13 +82,43 @@ ignore_hosts = ["*.prod.company.com", "db-prod", "secure-*"]
 # Register custom command abbreviations as first-class MCP tools
 [[custom_tools]]
 name = "list_upgradable"
-description = "List all packages that can be upgraded on the host via apt"
+description = "List all upgradable packages via apt. USE THIS instead of running apt manually."
 command = "apt list --upgradable"
 
 [[custom_tools]]
 name = "grep_syslog"
-description = "Grep syslog for a specific pattern"
+description = "Search syslog for a pattern. USE THIS instead of ssh + grep."
 command = "grep -i '{args}' /var/log/syslog"
+
+[[custom_tools]]
+name = "check_service_status"
+description = "Check if a system service is running and its status"
+command = "systemctl status {args} 2>/dev/null || service {args} status 2>/dev/null || echo 'Service command not found'"
+#Use case: Use instead of: ssh host "systemctl status nginx"
+
+[[custom_tools]]
+name = "find_large_files"
+description = ""Find files larger than N MB for disk cleanup. USE THIS instead of ssh + find. Pass size in MB (e.g., find_large_files 100)."
+command = "find / -type f -size +{args}M -exec ls -lh {} + 2>/dev/null | sort -k5 -h | tail -20"
+#Use case: Agent needs to identify space hogs when a disk is full. Call with find_large_files 100 or find_large_files 500.
+
+[[custom_tools]]
+name = "list_network_connections"
+description = "List all active network connections with process info"
+command = "ss -tulnp 2>/dev/null || netstat -tulnp 2>/dev/null"
+#Use case: Agent needs to debug network issues, check what's listening on a port, or identify suspicious connections.
+
+[[custom_tools]]
+name = "check_docker_status"
+description = "Check Docker container statuses"
+command = "docker ps -a --format '{{.Names}}|{{.Status}}|{{.Ports}}' 2>/dev/null"
+#Use case: Agent needs to check the status of Docker containers.
+
+[[custom_tools]]
+name = "list_cron_jobs"
+description = "List all cron jobs for current user and root"
+command = "crontab -l 2>/dev/null; echo '=== ROOT ==='; sudo crontab -l 2>/dev/null"
+#Use case: Agent needs to list cron jobs for current user and root.
 ```
 
 ### Custom Tools / Command Abbreviations

@@ -8,22 +8,37 @@ mod mcp_server;
 mod ssh_config;
 mod ssh_pool;
 
+use clap::{Parser, Subcommand};
+
+#[derive(Parser)]
+#[command(name = "agentic_ssh")]
+#[command(version)]
+#[command(about = "agentic_ssh - SSH connection pooling & MCP server for AI agents", long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Start the live TUI connection pool dashboard
+    Tui,
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() > 1 {
-        if args[1] == "tui" {
+    let cli = Cli::parse();
+
+    match cli.command {
+        Some(Commands::Tui) => {
             run_tui()?;
-            return Ok(());
-        } else if args[1] == "--version" || args[1] == "-v" {
-            println!("agentic_ssh version {}", env!("CARGO_PKG_VERSION"));
-            return Ok(());
+        }
+        None => {
+            // We maintain a pool of open SSH connections, closing them after 5 minutes (300 seconds) of inactivity.
+            let server = mcp_server::McpServer::new(Duration::from_secs(300));
+            server.run().await?;
         }
     }
-
-    // We maintain a pool of open SSH connections, closing them after 5 minutes (300 seconds) of inactivity.
-    let server = mcp_server::McpServer::new(Duration::from_secs(300));
-    server.run().await?;
     Ok(())
 }
 

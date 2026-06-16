@@ -1,7 +1,7 @@
-use std::sync::Arc;
-use std::time::Duration;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use crate::ssh_config::list_ssh_hosts;
@@ -61,7 +61,10 @@ fn abbreviate_output(output: &str, max_lines: usize) -> String {
         result.push_str(line);
         result.push('\n');
     }
-    result.push_str(&format!("... [{} lines truncated] ...\n", lines.len() - max_lines));
+    result.push_str(&format!(
+        "... [{} lines truncated] ...\n",
+        lines.len() - max_lines
+    ));
     for line in tail {
         result.push_str(line);
         result.push('\n');
@@ -103,7 +106,10 @@ impl McpServer {
             let req: JsonRpcRequest = match serde_json::from_str(trimmed) {
                 Ok(r) => r,
                 Err(e) => {
-                    eprintln!("Failed to parse JSON-RPC request: {:?}. Raw line: {}", e, trimmed);
+                    eprintln!(
+                        "Failed to parse JSON-RPC request: {:?}. Raw line: {}",
+                        e, trimmed
+                    );
                     // If parsing fails, we cannot send a response if we don't have an ID,
                     // but we can send a parse error response with null ID.
                     let resp = JsonRpcResponse {
@@ -138,7 +144,7 @@ impl McpServer {
 
             // Handle the request
             let resp = self.handle_request(req).await;
-            
+
             // If the request had an ID, send response (JSON-RPC notification has no ID and expects no response)
             if resp.id.is_some() {
                 self.send_response(&mut stdout, &resp).await?;
@@ -148,7 +154,11 @@ impl McpServer {
         Ok(())
     }
 
-    async fn send_response(&self, stdout: &mut tokio::io::Stdout, resp: &JsonRpcResponse) -> Result<()> {
+    async fn send_response(
+        &self,
+        stdout: &mut tokio::io::Stdout,
+        resp: &JsonRpcResponse,
+    ) -> Result<()> {
         let serialized = serde_json::to_vec(resp)?;
         stdout.write_all(&serialized).await?;
         stdout.write_all(b"\n").await?;
@@ -188,20 +198,18 @@ impl McpServer {
                     error: None,
                 }
             }
-            "ping" => {
-                JsonRpcResponse {
-                    jsonrpc: "2.0".to_string(),
-                    id,
-                    result: Some(serde_json::json!({})),
-                    error: None,
-                }
-            }
+            "ping" => JsonRpcResponse {
+                jsonrpc: "2.0".to_string(),
+                id,
+                result: Some(serde_json::json!({})),
+                error: None,
+            },
             "tools/list" => {
                 let tools = serde_json::json!({
                     "tools": [
                         {
                             "name": "list_hosts",
-                            "description": "List all configured SSH hosts found in ~/.ssh/config",
+                            "description": "List all SSH hosts - USE THIS instead of parsing ~/.ssh/config manually. Respects allow_hosts/ignore_hosts filtering.",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {}
@@ -209,7 +217,7 @@ impl McpServer {
                         },
                         {
                             "name": "run_command",
-                            "description": "Execute a shell command on an SSH host. Uses pooled connection.",
+                            "description": "Execute a shell command on an SSH host. Uses pooled connection. Use this instead of connecting directly.",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
@@ -235,7 +243,7 @@ impl McpServer {
                         },
                         {
                             "name": "search_processes",
-                            "description": "Search running processes on a remote host matching a pattern/regex, returning structured JSON results to save tokens.",
+                            "description": "Search running processes on a remote host. USE THIS instead of running ps/grep manually. Returns structured JSON to save tokens.",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
@@ -257,7 +265,7 @@ impl McpServer {
                         },
                         {
                             "name": "tail_log",
-                            "description": "Fetch the last N lines of a remote log file.",
+                            "description": "Fetch the last N lines of a remote log file as plain text.",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
@@ -279,7 +287,7 @@ impl McpServer {
                         },
                         {
                             "name": "tail_container_logs",
-                            "description": "Fetch the last N lines of logs from a remote Docker container.",
+                            "description": "Fetch the last N lines of logs from a remote Docker container as plain text.",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
@@ -305,7 +313,7 @@ impl McpServer {
                         },
                         {
                             "name": "wait_for_log_pattern",
-                            "description": "Streams a log file or Docker container logs and blocks until a regex pattern is matched or timeout occurs. Efficiently alerts the agent when an event happens.",
+                            "description": "Blocks until a regex pattern appears in a log file or Docker container. Returns only the matching line when found, or a timeout message. No streaming to agent - efficient for waiting on events.",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
@@ -373,6 +381,9 @@ impl McpServer {
                 if let Some(tools_arr) = tools_val.get_mut("tools").and_then(|t| t.as_array_mut()) {
                     let config = crate::ssh_pool::load_config();
                     for custom in config.custom_tools {
+                        // Remove native tool with same name to enforce custom precedence/override
+                        tools_arr.retain(|t| t.get("name").and_then(|n| n.as_str()) != Some(&custom.name));
+
                         tools_arr.push(serde_json::json!({
                             "name": custom.name,
                             "description": custom.description,
@@ -401,26 +412,24 @@ impl McpServer {
                     error: None,
                 }
             }
-            "tools/call" => {
-                match self.handle_tools_call(req.params).await {
-                    Ok(res) => JsonRpcResponse {
-                        jsonrpc: "2.0".to_string(),
-                        id,
-                        result: Some(res),
-                        error: None,
-                    },
-                    Err(e) => JsonRpcResponse {
-                        jsonrpc: "2.0".to_string(),
-                        id,
-                        result: None,
-                        error: Some(JsonRpcError {
-                            code: -32000,
-                            message: e.to_string(),
-                            data: None,
-                        }),
-                    },
-                }
-            }
+            "tools/call" => match self.handle_tools_call(req.params).await {
+                Ok(res) => JsonRpcResponse {
+                    jsonrpc: "2.0".to_string(),
+                    id,
+                    result: Some(res),
+                    error: None,
+                },
+                Err(e) => JsonRpcResponse {
+                    jsonrpc: "2.0".to_string(),
+                    id,
+                    result: None,
+                    error: Some(JsonRpcError {
+                        code: -32000,
+                        message: e.to_string(),
+                        data: None,
+                    }),
+                },
+            },
             _ => JsonRpcResponse {
                 jsonrpc: "2.0".to_string(),
                 id,
@@ -434,51 +443,101 @@ impl McpServer {
         }
     }
 
-    async fn handle_tools_call(&self, params: Option<serde_json::Value>) -> Result<serde_json::Value> {
+    async fn handle_tools_call(
+        &self,
+        params: Option<serde_json::Value>,
+    ) -> Result<serde_json::Value> {
         let params = params.ok_or_else(|| anyhow::anyhow!("Missing params for tools/call"))?;
         let name = params
             .get("name")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing or invalid name field in tools/call"))?;
-        
-        let arguments = params.get("arguments").cloned().unwrap_or(serde_json::json!({}));
 
-        match name {
-            "list_hosts" => {
-                match list_ssh_hosts() {
-                    Ok(hosts) => {
-                        let ssh_config = crate::ssh_config::load_ssh_config().unwrap_or_default();
-                        let filtered_hosts: Vec<String> = hosts
-                            .into_iter()
-                            .filter(|h| {
-                                let real_host = ssh_config.query(h).host_name.as_deref().unwrap_or(h).to_string();
-                                !crate::ssh_pool::is_host_ignored(h, Some(&real_host))
-                            })
-                            .collect();
-                        let text = serde_json::to_string_pretty(&filtered_hosts)?;
-                        Ok(serde_json::json!({
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": text
-                                }
-                            ],
-                            "isError": false
-                        }))
-                    }
-                    Err(e) => {
-                        Ok(serde_json::json!({
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": format!("Error listing hosts: {}", e)
-                                }
-                            ],
-                            "isError": true
-                        }))
-                    }
+        let arguments = params
+            .get("arguments")
+            .cloned()
+            .unwrap_or(serde_json::json!({}));
+
+        // Check for custom tool first to enforce custom precedence/override
+        let config = crate::ssh_pool::load_config();
+        if let Some(custom) = config.custom_tools.iter().find(|t| t.name == name) {
+            let host = arguments
+                .get("host")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow::anyhow!("Missing 'host' argument"))?;
+
+            let args = arguments.get("args").and_then(|v| v.as_str()).unwrap_or("");
+
+            let cmd_to_run = if custom.command.contains("{args}") {
+                custom.command.replace("{args}", args)
+            } else if !args.is_empty() {
+                format!("{} {}", custom.command, args)
+            } else {
+                custom.command.clone()
+            };
+
+            match self.pool.execute_command(host, &cmd_to_run).await {
+                Ok((stdout, stderr, exit_code)) => {
+                    let is_error = exit_code != 0;
+                    let text = if is_error {
+                        format!(
+                            "Error executing custom tool '{}' (exit code {}):\n{}",
+                            name, exit_code, stderr
+                        )
+                    } else {
+                        stdout
+                    };
+                    return Ok(serde_json::json!({
+                        "content": [{ "type": "text", "text": text }],
+                        "isError": is_error
+                    }));
+                }
+                Err(e) => {
+                    return Ok(serde_json::json!({
+                        "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
+                        "isError": true
+                    }));
                 }
             }
+        }
+
+        match name {
+            "list_hosts" => match list_ssh_hosts() {
+                Ok(hosts) => {
+                    let ssh_config = crate::ssh_config::load_ssh_config().unwrap_or_default();
+                    let filtered_hosts: Vec<String> = hosts
+                        .into_iter()
+                        .filter(|h| {
+                            let real_host = ssh_config
+                                .query(h)
+                                .host_name
+                                .as_deref()
+                                .unwrap_or(h)
+                                .to_string();
+                            !crate::ssh_pool::is_host_ignored(h, Some(&real_host))
+                        })
+                        .collect();
+                    let text = serde_json::to_string_pretty(&filtered_hosts)?;
+                    Ok(serde_json::json!({
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": text
+                            }
+                        ],
+                        "isError": false
+                    }))
+                }
+                Err(e) => Ok(serde_json::json!({
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": format!("Error listing hosts: {}", e)
+                        }
+                    ],
+                    "isError": true
+                })),
+            },
             "get_system_stats" => {
                 let host = arguments
                     .get("host")
@@ -489,7 +548,10 @@ impl McpServer {
                 match self.pool.execute_command(host, cmd).await {
                     Ok((stdout, stderr, exit_code)) => {
                         if exit_code != 0 {
-                            let text = format!("Error executing stats command (exit code {}):\n{}", exit_code, stderr);
+                            let text = format!(
+                                "Error executing stats command (exit code {}):\n{}",
+                                exit_code, stderr
+                            );
                             return Ok(serde_json::json!({
                                 "content": [{ "type": "text", "text": text }],
                                 "isError": true
@@ -502,12 +564,10 @@ impl McpServer {
                             "isError": false
                         }))
                     }
-                    Err(e) => {
-                        Ok(serde_json::json!({
-                            "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
-                            "isError": true
-                        }))
-                    }
+                    Err(e) => Ok(serde_json::json!({
+                        "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
+                        "isError": true
+                    })),
                 }
             }
             "list_ports" => {
@@ -525,7 +585,10 @@ impl McpServer {
                 match self.pool.execute_command(host, cmd).await {
                     Ok((stdout, stderr, exit_code)) => {
                         if exit_code != 0 {
-                            let text = format!("Error executing ports command (exit code {}):\n{}", exit_code, stderr);
+                            let text = format!(
+                                "Error executing ports command (exit code {}):\n{}",
+                                exit_code, stderr
+                            );
                             return Ok(serde_json::json!({
                                 "content": [{ "type": "text", "text": text }],
                                 "isError": true
@@ -538,12 +601,10 @@ impl McpServer {
                             "isError": false
                         }))
                     }
-                    Err(e) => {
-                        Ok(serde_json::json!({
-                            "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
-                            "isError": true
-                        }))
-                    }
+                    Err(e) => Ok(serde_json::json!({
+                        "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
+                        "isError": true
+                    })),
                 }
             }
             "run_command" => {
@@ -551,7 +612,7 @@ impl McpServer {
                     .get("host")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("Missing 'host' argument"))?;
-                
+
                 let command = arguments
                     .get("command")
                     .and_then(|v| v.as_str())
@@ -593,17 +654,15 @@ impl McpServer {
                             "isError": false
                         }))
                     }
-                    Err(e) => {
-                        Ok(serde_json::json!({
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": format!("Error: {:#}", e)
-                                }
-                            ],
-                            "isError": true
-                        }))
-                    }
+                    Err(e) => Ok(serde_json::json!({
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": format!("Error: {:#}", e)
+                            }
+                        ],
+                        "isError": true
+                    })),
                 }
             }
             "search_processes" => {
@@ -611,7 +670,7 @@ impl McpServer {
                     .get("host")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("Missing 'host' argument"))?;
-                
+
                 let pattern = arguments
                     .get("pattern")
                     .and_then(|v| v.as_str())
@@ -629,10 +688,17 @@ impl McpServer {
                     .map_err(|e| anyhow::anyhow!("Invalid regex pattern: {}", e))?;
 
                 // POSIX-standard process listing
-                match self.pool.execute_command(host, "ps -eo pid,user,%cpu,%mem,args").await {
+                match self
+                    .pool
+                    .execute_command(host, "ps -eo pid,user,%cpu,%mem,args")
+                    .await
+                {
                     Ok((stdout, stderr, exit_code)) => {
                         if exit_code != 0 {
-                            let text = format!("Error running ps command (exit code {}):\n{}", exit_code, stderr);
+                            let text = format!(
+                                "Error running ps command (exit code {}):\n{}",
+                                exit_code, stderr
+                            );
                             return Ok(serde_json::json!({
                                 "content": [{ "type": "text", "text": text }],
                                 "isError": true
@@ -646,7 +712,7 @@ impl McpServer {
                             if trimmed.is_empty() {
                                 continue;
                             }
-                            
+
                             // Split by whitespace
                             let parts: Vec<&str> = trimmed.split_whitespace().collect();
                             if parts.len() < 5 {
@@ -694,17 +760,15 @@ impl McpServer {
                             "isError": false
                         }))
                     }
-                    Err(e) => {
-                        Ok(serde_json::json!({
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": format!("Error: {:#}", e)
-                                }
-                            ],
-                            "isError": true
-                        }))
-                    }
+                    Err(e) => Ok(serde_json::json!({
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": format!("Error: {:#}", e)
+                            }
+                        ],
+                        "isError": true
+                    })),
                 }
             }
             "tail_log" => {
@@ -712,7 +776,7 @@ impl McpServer {
                     .get("host")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("Missing 'host' argument"))?;
-                
+
                 let file_path = arguments
                     .get("file_path")
                     .and_then(|v| v.as_str())
@@ -738,12 +802,10 @@ impl McpServer {
                             "isError": is_error
                         }))
                     }
-                    Err(e) => {
-                        Ok(serde_json::json!({
-                            "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
-                            "isError": true
-                        }))
-                    }
+                    Err(e) => Ok(serde_json::json!({
+                        "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
+                        "isError": true
+                    })),
                 }
             }
             "tail_container_logs" => {
@@ -751,7 +813,7 @@ impl McpServer {
                     .get("host")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("Missing 'host' argument"))?;
-                
+
                 let container = arguments
                     .get("container")
                     .and_then(|v| v.as_str())
@@ -774,7 +836,10 @@ impl McpServer {
                     Ok((stdout, stderr, exit_code)) => {
                         let is_error = exit_code != 0;
                         let text = if is_error {
-                            format!("Error fetching container logs (exit code {}):\n{}", exit_code, stderr)
+                            format!(
+                                "Error fetching container logs (exit code {}):\n{}",
+                                exit_code, stderr
+                            )
                         } else {
                             if stdout.is_empty() && !stderr.is_empty() {
                                 stderr
@@ -787,12 +852,10 @@ impl McpServer {
                             "isError": is_error
                         }))
                     }
-                    Err(e) => {
-                        Ok(serde_json::json!({
-                            "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
-                            "isError": true
-                        }))
-                    }
+                    Err(e) => Ok(serde_json::json!({
+                        "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
+                        "isError": true
+                    })),
                 }
             }
             "wait_for_log_pattern" => {
@@ -800,15 +863,19 @@ impl McpServer {
                     .get("host")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("Missing 'host' argument"))?;
-                
+
                 let file_path = arguments.get("file_path").and_then(|v| v.as_str());
                 let container = arguments.get("container").and_then(|v| v.as_str());
 
                 if file_path.is_none() && container.is_none() {
-                    return Err(anyhow::anyhow!("Provide either 'file_path' or 'container' argument"));
+                    return Err(anyhow::anyhow!(
+                        "Provide either 'file_path' or 'container' argument"
+                    ));
                 }
                 if file_path.is_some() && container.is_some() {
-                    return Err(anyhow::anyhow!("Provide either 'file_path' or 'container', not both"));
+                    return Err(anyhow::anyhow!(
+                        "Provide either 'file_path' or 'container', not both"
+                    ));
                 }
 
                 let pattern = arguments
@@ -833,10 +900,14 @@ impl McpServer {
                 };
 
                 let handle = self.pool.get_connection(host).await?;
-                let mut channel = handle.channel_open_session().await
+                let mut channel = handle
+                    .channel_open_session()
+                    .await
                     .context("Failed to open SSH channel")?;
-                
-                channel.exec(true, cmd).await
+
+                channel
+                    .exec(true, cmd)
+                    .await
                     .context("Failed to execute tail/log command")?;
 
                 let mut stdout_buf = Vec::new();
@@ -849,18 +920,23 @@ impl McpServer {
 
                 loop {
                     if start_time.elapsed() >= timeout {
-                        error_msg = Some(format!("Timed out after {} seconds waiting for pattern '{}'", timeout_secs, pattern));
+                        error_msg = Some(format!(
+                            "Timed out after {} seconds waiting for pattern '{}'",
+                            timeout_secs, pattern
+                        ));
                         break;
                     }
 
                     match tokio::time::timeout(sleep_duration, channel.wait()).await {
                         Ok(Some(russh::ChannelMsg::Data { data })) => {
                             stdout_buf.extend_from_slice(&data);
-                            
+
                             let mut found = false;
                             while let Some(pos) = stdout_buf.iter().position(|&b| b == b'\n') {
                                 let line_bytes: Vec<u8> = stdout_buf.drain(..=pos).collect();
-                                let line_str = String::from_utf8_lossy(&line_bytes[..line_bytes.len() - 1]).into_owned();
+                                let line_str =
+                                    String::from_utf8_lossy(&line_bytes[..line_bytes.len() - 1])
+                                        .into_owned();
                                 if re.is_match(&line_str) {
                                     matched_line = Some(line_str);
                                     found = true;
@@ -874,11 +950,14 @@ impl McpServer {
                         Ok(Some(russh::ChannelMsg::ExtendedData { data, ext })) => {
                             if ext == 1 {
                                 stdout_buf.extend_from_slice(&data);
-                                
+
                                 let mut found = false;
                                 while let Some(pos) = stdout_buf.iter().position(|&b| b == b'\n') {
                                     let line_bytes: Vec<u8> = stdout_buf.drain(..=pos).collect();
-                                    let line_str = String::from_utf8_lossy(&line_bytes[..line_bytes.len() - 1]).into_owned();
+                                    let line_str = String::from_utf8_lossy(
+                                        &line_bytes[..line_bytes.len() - 1],
+                                    )
+                                    .into_owned();
                                     if re.is_match(&line_str) {
                                         matched_line = Some(line_str);
                                         found = true;
@@ -892,7 +971,8 @@ impl McpServer {
                         }
                         Ok(Some(russh::ChannelMsg::ExitStatus { exit_status })) => {
                             if exit_status != 0 {
-                                error_msg = Some(format!("Command exited with status {}", exit_status));
+                                error_msg =
+                                    Some(format!("Command exited with status {}", exit_status));
                             }
                             break;
                         }
@@ -924,7 +1004,9 @@ impl McpServer {
                         "isError": false
                     }))
                 } else {
-                    let err = error_msg.unwrap_or_else(|| "Connection closed before pattern was matched".to_string());
+                    let err = error_msg.unwrap_or_else(|| {
+                        "Connection closed before pattern was matched".to_string()
+                    });
                     Ok(serde_json::json!({
                         "content": [{
                             "type": "text",
@@ -934,51 +1016,7 @@ impl McpServer {
                     }))
                 }
             }
-            _ => {
-                let config = crate::ssh_pool::load_config();
-                if let Some(custom) = config.custom_tools.iter().find(|t| t.name == name) {
-                    let host = arguments
-                        .get("host")
-                        .and_then(|v| v.as_str())
-                        .ok_or_else(|| anyhow::anyhow!("Missing 'host' argument"))?;
-
-                    let args = arguments
-                        .get("args")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-
-                    let cmd_to_run = if custom.command.contains("{args}") {
-                        custom.command.replace("{args}", args)
-                    } else if !args.is_empty() {
-                        format!("{} {}", custom.command, args)
-                    } else {
-                        custom.command.clone()
-                    };
-
-                    match self.pool.execute_command(host, &cmd_to_run).await {
-                        Ok((stdout, stderr, exit_code)) => {
-                            let is_error = exit_code != 0;
-                            let text = if is_error {
-                                format!("Error executing custom tool '{}' (exit code {}):\n{}", name, exit_code, stderr)
-                            } else {
-                                stdout
-                            };
-                            Ok(serde_json::json!({
-                                "content": [{ "type": "text", "text": text }],
-                                "isError": is_error
-                            }))
-                        }
-                        Err(e) => {
-                            Ok(serde_json::json!({
-                                "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
-                                "isError": true
-                            }))
-                        }
-                    }
-                } else {
-                    Err(anyhow::anyhow!("Unknown tool: {}", name))
-                }
-            }
+            _ => Err(anyhow::anyhow!("Unknown tool: {}", name)),
         }
     }
 }
@@ -1010,7 +1048,12 @@ pub struct DiskStats {
 
 fn parse_system_stats(raw_output: &str) -> SystemStats {
     let mut load_averages = Vec::new();
-    let mut memory = MemoryStats { total_kb: 0, free_kb: 0, available_kb: None, used_kb: 0 };
+    let mut memory = MemoryStats {
+        total_kb: 0,
+        free_kb: 0,
+        available_kb: None,
+        used_kb: 0,
+    };
     let mut disks = Vec::new();
 
     let parts: Vec<&str> = raw_output.split("=== ").collect();
@@ -1046,15 +1089,24 @@ fn parse_system_stats(raw_output: &str) -> SystemStats {
             let mut total = None;
             let mut free = None;
             let mut avail = None;
-            
+
             for line in content.lines() {
                 let trimmed = line.trim();
                 if trimmed.starts_with("MemTotal:") {
-                    total = trimmed.split_whitespace().nth(1).and_then(|s| s.parse::<u64>().ok());
+                    total = trimmed
+                        .split_whitespace()
+                        .nth(1)
+                        .and_then(|s| s.parse::<u64>().ok());
                 } else if trimmed.starts_with("MemFree:") {
-                    free = trimmed.split_whitespace().nth(1).and_then(|s| s.parse::<u64>().ok());
+                    free = trimmed
+                        .split_whitespace()
+                        .nth(1)
+                        .and_then(|s| s.parse::<u64>().ok());
                 } else if trimmed.starts_with("MemAvailable:") {
-                    avail = trimmed.split_whitespace().nth(1).and_then(|s| s.parse::<u64>().ok());
+                    avail = trimmed
+                        .split_whitespace()
+                        .nth(1)
+                        .and_then(|s| s.parse::<u64>().ok());
                 }
             }
 
@@ -1067,7 +1119,11 @@ fn parse_system_stats(raw_output: &str) -> SystemStats {
                 for line in content.lines() {
                     let parts_mem: Vec<&str> = line.split_whitespace().collect();
                     if parts_mem.len() >= 4 && parts_mem[0].starts_with("Mem:") {
-                        let parsed = (parts_mem[1].parse::<u64>(), parts_mem[2].parse::<u64>(), parts_mem[3].parse::<u64>());
+                        let parsed = (
+                            parts_mem[1].parse::<u64>(),
+                            parts_mem[2].parse::<u64>(),
+                            parts_mem[3].parse::<u64>(),
+                        );
                         if let (Ok(t), Ok(u), Ok(f)) = parsed {
                             memory.total_kb = t;
                             memory.free_kb = f;
@@ -1089,11 +1145,22 @@ fn parse_system_stats(raw_output: &str) -> SystemStats {
                 let parts_disk: Vec<&str> = line.split_whitespace().collect();
                 if parts_disk.len() >= 6 {
                     let fs = parts_disk[0].to_string();
-                    if fs == "tmpfs" || fs == "devtmpfs" || fs == "udev" || fs.starts_with("/dev/loop") {
+                    if fs == "tmpfs"
+                        || fs == "devtmpfs"
+                        || fs == "udev"
+                        || fs.starts_with("/dev/loop")
+                    {
                         continue;
                     }
-                    if let (Ok(size), Ok(used), Ok(avail)) = (parts_disk[1].parse::<u64>(), parts_disk[2].parse::<u64>(), parts_disk[3].parse::<u64>()) {
-                        let pct = parts_disk[4].trim_end_matches('%').parse::<u32>().unwrap_or(0);
+                    if let (Ok(size), Ok(used), Ok(avail)) = (
+                        parts_disk[1].parse::<u64>(),
+                        parts_disk[2].parse::<u64>(),
+                        parts_disk[3].parse::<u64>(),
+                    ) {
+                        let pct = parts_disk[4]
+                            .trim_end_matches('%')
+                            .parse::<u32>()
+                            .unwrap_or(0);
                         let mount = parts_disk[5].to_string();
                         disks.push(DiskStats {
                             filesystem: fs,
@@ -1109,7 +1176,11 @@ fn parse_system_stats(raw_output: &str) -> SystemStats {
         }
     }
 
-    SystemStats { load_averages, memory, disks }
+    SystemStats {
+        load_averages,
+        memory,
+        disks,
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -1125,7 +1196,11 @@ fn parse_listening_ports(raw_output: &str, filter_port: Option<u32>) -> Vec<List
     let mut results = Vec::new();
     for line in raw_output.lines() {
         let line = line.trim();
-        if line.is_empty() || line.starts_with("Active") || line.starts_with("Proto") || line.starts_with("Netid") {
+        if line.is_empty()
+            || line.starts_with("Active")
+            || line.starts_with("Proto")
+            || line.starts_with("Netid")
+        {
             continue;
         }
 
@@ -1138,7 +1213,11 @@ fn parse_listening_ports(raw_output: &str, filter_port: Option<u32>) -> Vec<List
         if !proto.contains("tcp") && !proto.contains("udp") {
             continue;
         }
-        let clean_proto = if proto.contains("tcp") { "tcp".to_string() } else { "udp".to_string() };
+        let clean_proto = if proto.contains("tcp") {
+            "tcp".to_string()
+        } else {
+            "udp".to_string()
+        };
 
         let local_addr_str = if parts.len() >= 5 && parts[4].contains(':') {
             parts[4]
@@ -1191,7 +1270,11 @@ fn parse_listening_ports(raw_output: &str, filter_port: Option<u32>) -> Vec<List
             }
         } else if let Some(pid_idx) = remaining_line.find("pid=") {
             let pid_str = &remaining_line[pid_idx + 4..];
-            if let Some(pid_val) = pid_str.split(',').next().and_then(|s| s.parse::<u32>().ok()) {
+            if let Some(pid_val) = pid_str
+                .split(',')
+                .next()
+                .and_then(|s| s.parse::<u32>().ok())
+            {
                 pid = Some(pid_val);
             }
             if let Some(users_idx) = remaining_line.find("users:((\"") {
@@ -1223,7 +1306,8 @@ mod tests {
 
     #[test]
     fn test_abbreviate_output() {
-        let input = "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10";
+        let input =
+            "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10";
         // Max 4 lines (keeping 2 at head, 2 at tail)
         let output = abbreviate_output(input, 4);
         let expected = "line 1\nline 2\n... [6 lines truncated] ...\nline 9\nline 10\n";
@@ -1243,8 +1327,11 @@ mod tests {
         assert_eq!(parts[1], "richard");
         assert_eq!(parts[2], "0.5");
         assert_eq!(parts[3], "1.2");
-        assert_eq!(parts[4..].join(" "), "/usr/local/bin/localmail serve --port 80");
-        
+        assert_eq!(
+            parts[4..].join(" "),
+            "/usr/local/bin/localmail serve --port 80"
+        );
+
         // Header line should not parse as PID
         let header = "  PID USER      %CPU %MEM COMMAND";
         let parts_header: Vec<&str> = header.split_whitespace().collect();
@@ -1297,7 +1384,7 @@ tmpfs              8139136         0   8139136       0% /dev/shm
         assert_eq!(stats.memory.free_kb, 4829104);
         assert_eq!(stats.memory.available_kb, Some(11000200));
         assert_eq!(stats.memory.used_kb, 16278272 - 11000200);
-        
+
         assert_eq!(stats.disks.len(), 1);
         assert_eq!(stats.disks[0].filesystem, "/dev/sda1");
         assert_eq!(stats.disks[0].size_kb, 105291040);
@@ -1317,7 +1404,7 @@ udp   UNCONN 0      0            0.0.0.0:53          0.0.0.0:*     users:((\"nam
 ";
         let ports = parse_listening_ports(raw_ss, None);
         assert_eq!(ports.len(), 2);
-        
+
         assert_eq!(ports[0].proto, "tcp");
         assert_eq!(ports[0].local_address, "0.0.0.0");
         assert_eq!(ports[0].port, 80);
@@ -1336,4 +1423,3 @@ udp   UNCONN 0      0            0.0.0.0:53          0.0.0.0:*     users:((\"nam
         assert_eq!(filtered[0].port, 53);
     }
 }
-
