@@ -17,21 +17,24 @@ It also supports output abbreviation, which helps save tokens by truncating extr
 
 ---
 
-## Installation & Building
+## Installation
 
-Make sure you have Rust and Cargo installed (or use the Nix environment).
+Ensure you have Rust and Cargo installed (or use the Nix environment).
 
-1. Clone or navigate to the repository.
-2. Build the binary in release mode:
-   ```bash
-   cargo build --release
-   ```
-   The compiled binary will be located at:
-   `target/release/agentic_ssh`
-3. Copy the binary to a location in your PATH, e.g.:
-   ```bash
-   sudo cp target/release/agentic_ssh /usr/local/bin/
-   ```
+### Install via Git
+You can install `agentic_ssh` directly from the GitHub repository:
+```bash
+cargo install --git https://github.com/sandbanks/agentic_ssh
+```
+
+### Install from Source
+Alternatively, you can clone the repository and install it locally:
+```bash
+git clone https://github.com/sandbanks/agentic_ssh.git
+cd agentic_ssh
+cargo install --path .
+```
+This builds the binary and places it in your Cargo binary directory (typically `~/.cargo/bin/`).
 
 ---
 
@@ -40,13 +43,13 @@ Make sure you have Rust and Cargo installed (or use the Nix environment).
 To register `agentic_ssh` with an MCP client (such as Claude Desktop), add it to your configuration file:
 
 ### Claude Desktop Configuration
-On macOS, edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
+On macOS, edit `~/Library/Application Support/Claude/claude_desktop_config.json`. Note that Claude Desktop may require the absolute path to your home directory instead of `~`:
 
 ```json
 {
   "mcpServers": {
     "agentic_ssh": {
-      "command": "/usr/local/bin/agentic_ssh",
+      "command": "/Users/YOUR_USER_NAME/.cargo/bin/agentic_ssh",
       "args": []
     }
   }
