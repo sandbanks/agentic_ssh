@@ -301,16 +301,6 @@ List active listening TCP and UDP ports on a remote host, with optional filterin
   - *Single host*: A JSON array of active port listener objects.
   - *Multi-host*: A JSON object mapping hostnames to listener arrays.
 
-### 9. `run_command_multi`
-Executes a shell command on multiple SSH hosts concurrently.
-- **Arguments**:
-  - `hosts` (array of strings, required): The SSH host aliases from `~/.ssh/config` to run the command on.
-  - `command` (string, required): The command to execute.
-  - `timeout_seconds` (integer, optional): The timeout per command in seconds (default: 15).
-  - `abbreviate` (boolean, optional): If `true`, truncates extremely long stdout outputs. Defaults to `false`.
-  - `max_lines` (integer, optional): Maximum number of lines to retain when `abbreviate` is true. Defaults to `100`.
-- **Returns**: A JSON object mapping hostnames to their tagged execution results (status, exit_code, stdout, stderr, or error/timeout messages).
-
 ---
 
 ## Running Tests
