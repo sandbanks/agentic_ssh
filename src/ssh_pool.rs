@@ -10,13 +10,12 @@ use crate::ssh_config::{expand_path, load_ssh_config};
 #[derive(Clone)]
 pub struct ClientHandler;
 
-#[async_trait::async_trait]
 impl russh::client::Handler for ClientHandler {
     type Error = russh::Error;
 
     async fn check_server_key(
         &mut self,
-        _server_public_key: &russh_keys::key::PublicKey,
+        _server_public_key: &russh::keys::PublicKey,
     ) -> Result<bool, Self::Error> {
         // Accept all server keys for agentic SSH usage.
         Ok(true)
@@ -323,17 +322,15 @@ impl ConnectionPool {
             eprintln!("SSH_AUTH_SOCK found at {:?}. Attempting agent authentication...", socket_path);
             match tokio::net::UnixStream::connect(&socket_path).await {
                 Ok(stream) => {
-                    let mut agent_client = russh_keys::agent::client::AgentClient::connect(stream);
+                    let mut agent_client = russh::keys::agent::client::AgentClient::connect(stream);
                     match agent_client.request_identities().await {
                         Ok(identities) => {
                             eprintln!("Found {} keys in SSH agent", identities.len());
                             for identity in identities {
                                 eprintln!("Trying agent key...");
-                                let (ac, res) = handle.authenticate_future(user, identity, agent_client).await;
-                                agent_client = ac;
-                                match res {
+                                match handle.authenticate_publickey_with(user, identity.public_key().into_owned(), None, &mut agent_client).await {
                                     Ok(success) => {
-                                        if success {
+                                        if success.success() {
                                             eprintln!("Authentication succeeded for {} using SSH agent key", host);
                                             authenticated = true;
                                             break;
@@ -364,10 +361,11 @@ impl ConnectionPool {
                 continue;
             }
             eprintln!("Attempting authentication with key: {:?}", key_path);
-            if let Ok(key) = russh_keys::load_secret_key(key_path, None) {
-                match handle.authenticate_publickey(user, Arc::new(key)).await {
+            if let Ok(key) = russh::keys::load_secret_key(key_path, None) {
+                let key_with_alg = russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key), None);
+                match handle.authenticate_publickey(user, key_with_alg).await {
                     Ok(success) => {
-                        if success {
+                        if success.success() {
                             eprintln!("Authentication succeeded for {} using {:?}", host, key_path);
                             authenticated = true;
                             break;
