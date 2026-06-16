@@ -59,6 +59,7 @@ dependencies = [
  "serde",
  "serde_json",
  "ssh2-config-rs",
+ "tempfile",
  "tokio",
  "toml",
 ]

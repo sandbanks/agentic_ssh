@@ -4,11 +4,58 @@ use mimalloc::MiMalloc;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
+mod errors;
+mod agents;
 mod mcp_server;
 mod ssh_config;
 mod ssh_pool;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
+
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+#[value(rename_all = "kebab-case")]
+enum AgentOption {
+    Claude,
+    #[value(name = "opencode")]
+    Opencode,
+    Codex,
+    Gemini,
+    Copilot,
+    Cursor,
+    Zed,
+    Cline,
+    RooCode,
+    Antigravity,
+    Kilo,
+    Kiro,
+    Kimi,
+    Vibe,
+    Grok,
+    Pi,
+}
+
+impl AgentOption {
+    fn to_str(self) -> &'static str {
+        match self {
+            AgentOption::Claude => "claude",
+            AgentOption::Opencode => "opencode",
+            AgentOption::Codex => "codex",
+            AgentOption::Gemini => "gemini",
+            AgentOption::Copilot => "copilot",
+            AgentOption::Cursor => "cursor",
+            AgentOption::Zed => "zed",
+            AgentOption::Cline => "cline",
+            AgentOption::RooCode => "roo-code",
+            AgentOption::Antigravity => "antigravity",
+            AgentOption::Kilo => "kilo",
+            AgentOption::Kiro => "kiro",
+            AgentOption::Kimi => "kimi",
+            AgentOption::Vibe => "vibe",
+            AgentOption::Grok => "grok",
+            AgentOption::Pi => "pi",
+        }
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "agentic_ssh")]
@@ -23,6 +70,26 @@ struct Cli {
 enum Commands {
     /// Start the live TUI connection pool dashboard
     Tui,
+    /// Install the MCP server configuration for AI agents
+    Install {
+        /// Agent to configure (auto-detects if omitted)
+        #[arg(long, value_enum)]
+        agent: Option<AgentOption>,
+
+        /// Install the MCP server only in the local project folder
+        #[arg(long)]
+        local: bool,
+    },
+    /// Uninstall the MCP server configuration for AI agents
+    Uninstall {
+        /// Agent to configure (auto-detects if omitted)
+        #[arg(long, value_enum)]
+        agent: Option<AgentOption>,
+
+        /// Uninstall the MCP server only in the local project folder
+        #[arg(long)]
+        local: bool,
+    },
 }
 
 #[tokio::main]
@@ -32,6 +99,112 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Some(Commands::Tui) => {
             run_tui()?;
+        }
+        Some(Commands::Install { agent, local }) => {
+            let home = crate::agents::home_dir()
+                .ok_or_else(|| anyhow::anyhow!("Could not determine user's home directory"))?;
+            let agentic_ssh_bin = crate::agents::which_agentic_ssh()
+                .ok_or_else(|| anyhow::anyhow!("Could not locate the `agentic_ssh` binary in PATH or current directory"))?;
+            let tool_permissions = crate::agents::expected_tool_perms();
+            
+            let scope = if local {
+                let project_path = std::env::current_dir()?;
+                crate::agents::InstallScope::Local { project_path }
+            } else {
+                crate::agents::InstallScope::Global
+            };
+
+            let ctx = crate::agents::InstallContext {
+                home,
+                agentic_ssh_bin,
+                tool_permissions,
+                scope,
+            };
+
+            if let Some(opt) = agent {
+                let id = opt.to_str();
+                let integration = crate::agents::get_integration(id)
+                    .map_err(|e| anyhow::anyhow!("{}", e))?;
+                if local && !integration.supports_local() {
+                    anyhow::bail!("Agent '{}' does not support project-scoped (--local) installation.", id);
+                }
+                eprintln!("Installing agentic_ssh MCP server for {}...", integration.name());
+                integration.install(&ctx).map_err(|e| anyhow::anyhow!("{}", e))?;
+                eprintln!("Successfully configured agentic_ssh for {}!", integration.name());
+            } else {
+                // Auto-detect
+                let all = crate::agents::all_integrations();
+                let mut detected = Vec::new();
+                for integration in all {
+                    if integration.is_detected(&ctx.home) && (!local || integration.supports_local()) {
+                        detected.push(integration);
+                    }
+                }
+
+                if detected.is_empty() {
+                    anyhow::bail!("No supported AI agents were auto-detected on this system. Please specify which agent to configure using '--agent <AGENT>'.");
+                }
+
+                eprintln!("Auto-detected agents: {}", detected.iter().map(|a| a.name()).collect::<Vec<_>>().join(", "));
+                for integration in detected {
+                    eprintln!("Installing agentic_ssh MCP server for {}...", integration.name());
+                    integration.install(&ctx).map_err(|e| anyhow::anyhow!("{}", e))?;
+                    eprintln!("Successfully configured agentic_ssh for {}!", integration.name());
+                }
+            }
+        }
+        Some(Commands::Uninstall { agent, local }) => {
+            let home = crate::agents::home_dir()
+                .ok_or_else(|| anyhow::anyhow!("Could not determine user's home directory"))?;
+            let agentic_ssh_bin = crate::agents::which_agentic_ssh()
+                .unwrap_or_else(|| "agentic_ssh".to_string());
+            let tool_permissions = crate::agents::expected_tool_perms();
+            
+            let scope = if local {
+                let project_path = std::env::current_dir()?;
+                crate::agents::InstallScope::Local { project_path }
+            } else {
+                crate::agents::InstallScope::Global
+            };
+
+            let ctx = crate::agents::InstallContext {
+                home,
+                agentic_ssh_bin,
+                tool_permissions,
+                scope,
+            };
+
+            if let Some(opt) = agent {
+                let id = opt.to_str();
+                let integration = crate::agents::get_integration(id)
+                    .map_err(|e| anyhow::anyhow!("{}", e))?;
+                if local && !integration.supports_local() {
+                    anyhow::bail!("Agent '{}' does not support project-scoped (--local) installation.", id);
+                }
+                eprintln!("Uninstalling agentic_ssh MCP server for {}...", integration.name());
+                integration.uninstall(&ctx).map_err(|e| anyhow::anyhow!("{}", e))?;
+                eprintln!("Successfully uninstalled agentic_ssh from {}!", integration.name());
+            } else {
+                // Auto-detect
+                let all = crate::agents::all_integrations();
+                let mut detected = Vec::new();
+                for integration in all {
+                    if integration.is_detected(&ctx.home) && (!local || integration.supports_local()) {
+                        detected.push(integration);
+                    }
+                }
+
+                if detected.is_empty() {
+                    anyhow::bail!("No supported AI agents were auto-detected on this system. Please specify which agent to uninstall using '--agent <AGENT>'.");
+                }
+
+                eprintln!("Auto-detected agents: {}", detected.iter().map(|a| a.name()).collect::<Vec<_>>().join(", "));
+                for integration in detected {
+                    eprintln!("Uninstalling agentic_ssh MCP server from {}...", integration.name());
+                    integration.uninstall(&ctx).map_err(|e| anyhow::anyhow!("{}", e))?;
+                    eprintln!("Successfully uninstalled agentic_ssh from {}!", integration.name());
+                }
+            }
         }
         None => {
             // We maintain a pool of open SSH connections, closing them after 5 minutes (300 seconds) of inactivity.
