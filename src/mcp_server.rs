@@ -217,13 +217,18 @@ impl McpServer {
                         },
                         {
                             "name": "run_command",
-                            "description": "Execute a shell command on an SSH host. Uses pooled connection. Use this instead of connecting directly.",
+                            "description": "Execute a shell command on an SSH host or multiple SSH hosts concurrently. Uses pooled connection.",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
                                     "host": {
                                         "type": "string",
                                         "description": "The SSH host alias from ~/.ssh/config to run the command on"
+                                    },
+                                    "hosts": {
+                                        "type": "array",
+                                        "items": { "type": "string" },
+                                        "description": "Optional: list of SSH hosts to run the command on concurrently"
                                     },
                                     "command": {
                                         "type": "string",
@@ -238,7 +243,7 @@ impl McpServer {
                                         "description": "Maximum lines of stdout to retain when abbreviate is true (default: 100)"
                                     }
                                 },
-                                "required": ["host", "command"]
+                                "required": ["command"]
                             }
                         },
                         {
@@ -276,13 +281,18 @@ impl McpServer {
                         },
                         {
                             "name": "search_processes",
-                            "description": "Search running processes on a remote host. USE THIS instead of running ps/grep manually. Returns structured JSON to save tokens.",
+                            "description": "Search running processes on a remote host or multiple hosts concurrently. Returns structured JSON.",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
                                     "host": {
                                         "type": "string",
                                         "description": "The SSH host to query"
+                                    },
+                                    "hosts": {
+                                        "type": "array",
+                                        "items": { "type": "string" },
+                                        "description": "Optional: list of SSH hosts to query concurrently"
                                     },
                                     "pattern": {
                                         "type": "string",
@@ -293,18 +303,23 @@ impl McpServer {
                                         "description": "If true, returns detailed stats (PID, USER, %CPU, %MEM, Command). If false, returns a concise list of PIDs and commands. Default: false."
                                     }
                                 },
-                                "required": ["host", "pattern"]
+                                "required": ["pattern"]
                             }
                         },
                         {
                             "name": "tail_log",
-                            "description": "Fetch the last N lines of a remote log file as plain text.",
+                            "description": "Fetch the last N lines of a remote log file as plain text (or tagged JSON for multiple hosts).",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
                                     "host": {
                                         "type": "string",
                                         "description": "The SSH host to query"
+                                    },
+                                    "hosts": {
+                                        "type": "array",
+                                        "items": { "type": "string" },
+                                        "description": "Optional: list of SSH hosts to query concurrently"
                                     },
                                     "file_path": {
                                         "type": "string",
@@ -315,18 +330,23 @@ impl McpServer {
                                         "description": "Number of lines to retrieve (default: 50)"
                                     }
                                 },
-                                "required": ["host", "file_path"]
+                                "required": ["file_path"]
                             }
                         },
                         {
                             "name": "tail_container_logs",
-                            "description": "Fetch the last N lines of logs from a remote Docker container as plain text.",
+                            "description": "Fetch the last N lines of logs from a remote Docker container (or tagged JSON for multiple hosts).",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
                                     "host": {
                                         "type": "string",
                                         "description": "The SSH host to query"
+                                    },
+                                    "hosts": {
+                                        "type": "array",
+                                        "items": { "type": "string" },
+                                        "description": "Optional: list of SSH hosts to query concurrently"
                                     },
                                     "container": {
                                         "type": "string",
@@ -341,18 +361,23 @@ impl McpServer {
                                         "description": "Include timestamps in the log output (default: false)"
                                     }
                                 },
-                                "required": ["host", "container"]
+                                "required": ["container"]
                             }
                         },
                         {
                             "name": "wait_for_log_pattern",
-                            "description": "Blocks until a regex pattern appears in a log file or Docker container. Returns only the matching line when found, or a timeout message. No streaming to agent - efficient for waiting on events.",
+                            "description": "Blocks until a regex pattern appears in a log file or Docker container. Returns only the matching line when found, or a timeout message.",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
                                     "host": {
                                         "type": "string",
                                         "description": "The SSH host to query"
+                                    },
+                                    "hosts": {
+                                        "type": "array",
+                                        "items": { "type": "string" },
+                                        "description": "Optional: list of SSH hosts to query concurrently"
                                     },
                                     "file_path": {
                                         "type": "string",
@@ -371,7 +396,7 @@ impl McpServer {
                                         "description": "Maximum seconds to wait before timing out (default: 30)"
                                     }
                                 },
-                                "required": ["host", "pattern"]
+                                "required": ["pattern"]
                             }
                         },
                         {
@@ -383,9 +408,14 @@ impl McpServer {
                                     "host": {
                                         "type": "string",
                                         "description": "The SSH host to query"
+                                    },
+                                    "hosts": {
+                                        "type": "array",
+                                        "items": { "type": "string" },
+                                        "description": "Optional: list of SSH hosts to query concurrently"
                                     }
                                 },
-                                "required": ["host"]
+                                "required": []
                             }
                         },
                         {
@@ -398,12 +428,17 @@ impl McpServer {
                                         "type": "string",
                                         "description": "The SSH host to query"
                                     },
+                                    "hosts": {
+                                        "type": "array",
+                                        "items": { "type": "string" },
+                                        "description": "Optional: list of SSH hosts to query concurrently"
+                                    },
                                     "port": {
                                         "type": "integer",
                                         "description": "Optional port number to filter by"
                                     }
                                 },
-                                "required": ["host"]
+                                "required": []
                             }
                         }
                     ]
@@ -427,12 +462,17 @@ impl McpServer {
                                         "type": "string",
                                         "description": "The SSH host to query"
                                     },
+                                    "hosts": {
+                                        "type": "array",
+                                        "items": { "type": "string" },
+                                        "description": "Optional: list of SSH hosts to query concurrently"
+                                    },
                                     "args": {
                                         "type": "string",
                                         "description": "Optional arguments/parameters to pass to the command (replaces {args} in the template or is appended)"
                                     }
                                 },
-                                "required": ["host"]
+                                "required": []
                             }
                         }));
                     }
@@ -494,11 +534,7 @@ impl McpServer {
         // Check for custom tool first to enforce custom precedence/override
         let config = crate::ssh_pool::load_config();
         if let Some(custom) = config.custom_tools.iter().find(|t| t.name == name) {
-            let host = arguments
-                .get("host")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow::anyhow!("Missing 'host' argument"))?;
-
+            let (hosts, is_multi) = parse_hosts(&arguments)?;
             let args = arguments.get("args").and_then(|v| v.as_str()).unwrap_or("");
 
             let cmd_to_run = if custom.command.contains("{args}") {
@@ -509,27 +545,47 @@ impl McpServer {
                 custom.command.clone()
             };
 
-            match self.pool.execute_command(host, &cmd_to_run).await {
-                Ok((stdout, stderr, exit_code)) => {
-                    let is_error = exit_code != 0;
-                    let text = if is_error {
-                        format!(
-                            "Error executing custom tool '{}' (exit code {}):\n{}",
-                            name, exit_code, stderr
-                        )
-                    } else {
-                        stdout
-                    };
-                    return Ok(serde_json::json!({
-                        "content": [{ "type": "text", "text": text }],
-                        "isError": is_error
-                    }));
+            let run_custom = {
+                let pool = self.pool.clone();
+                let cmd_to_run = cmd_to_run.clone();
+                let name = name.to_string();
+                move |host: String| {
+                    let pool = pool.clone();
+                    let cmd_to_run = cmd_to_run.clone();
+                    let name = name.clone();
+                    async move {
+                        let (stdout, stderr, exit_code) = pool.execute_command(&host, &cmd_to_run).await?;
+                        if exit_code != 0 {
+                            anyhow::bail!("Error executing custom tool '{}' (exit code {}):\n{}", name, exit_code, stderr);
+                        }
+                        Ok(serde_json::json!(stdout))
+                    }
                 }
-                Err(e) => {
-                    return Ok(serde_json::json!({
-                        "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
-                        "isError": true
-                    }));
+            };
+
+            if is_multi {
+                let results = execute_on_hosts(hosts, 15, run_custom).await?;
+                let text = serde_json::to_string_pretty(&results)?;
+                return Ok(serde_json::json!({
+                    "content": [{ "type": "text", "text": text }],
+                    "isError": false
+                }));
+            } else {
+                let host = &hosts[0];
+                match run_custom(host.to_string()).await {
+                    Ok(stdout_val) => {
+                        let text = stdout_val.as_str().unwrap_or("").to_string();
+                        return Ok(serde_json::json!({
+                            "content": [{ "type": "text", "text": text }],
+                            "isError": false
+                        }));
+                    }
+                    Err(e) => {
+                        return Ok(serde_json::json!({
+                            "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
+                            "isError": true
+                        }));
+                    }
                 }
             }
         }
@@ -572,80 +628,96 @@ impl McpServer {
                 })),
             },
             "get_system_stats" => {
-                let host = arguments
-                    .get("host")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| anyhow::anyhow!("Missing 'host' argument"))?;
-
-                let cmd = "echo '=== LOAD ===' && (cat /proc/loadavg 2>/dev/null || uptime) && echo '=== MEM ===' && (cat /proc/meminfo 2>/dev/null || free -k 2>/dev/null) && echo '=== DISK ===' && df -kP";
-                match self.pool.execute_command(host, cmd).await {
-                    Ok((stdout, stderr, exit_code)) => {
-                        if exit_code != 0 {
-                            let text = format!(
-                                "Error executing stats command (exit code {}):\n{}",
-                                exit_code, stderr
-                            );
-                            return Ok(serde_json::json!({
-                                "content": [{ "type": "text", "text": text }],
-                                "isError": true
-                            }));
+                let (hosts, is_multi) = parse_hosts(&arguments)?;
+                let run_stats = {
+                    let pool = self.pool.clone();
+                    move |host: String| {
+                        let pool = pool.clone();
+                        async move {
+                            let cmd = "echo '=== LOAD ===' && (cat /proc/loadavg 2>/dev/null || uptime) && echo '=== MEM ===' && (cat /proc/meminfo 2>/dev/null || free -k 2>/dev/null) && echo '=== DISK ===' && df -kP";
+                            let (stdout, stderr, exit_code) = pool.execute_command(&host, cmd).await?;
+                            if exit_code != 0 {
+                                anyhow::bail!("Error executing stats command (exit code {}):\n{}", exit_code, stderr);
+                            }
+                            let stats = parse_system_stats(&stdout);
+                            Ok(serde_json::to_value(&stats)?)
                         }
-                        let stats = parse_system_stats(&stdout);
-                        let text = serde_json::to_string_pretty(&stats)?;
-                        Ok(serde_json::json!({
-                            "content": [{ "type": "text", "text": text }],
-                            "isError": false
-                        }))
                     }
-                    Err(e) => Ok(serde_json::json!({
-                        "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
-                        "isError": true
-                    })),
+                };
+
+                if is_multi {
+                    let results = execute_on_hosts(hosts, 15, run_stats).await?;
+                    let text = serde_json::to_string_pretty(&results)?;
+                    Ok(serde_json::json!({
+                        "content": [{ "type": "text", "text": text }],
+                        "isError": false
+                    }))
+                } else {
+                    let host = &hosts[0];
+                    match run_stats(host.to_string()).await {
+                        Ok(stats_val) => {
+                            let text = serde_json::to_string_pretty(&stats_val)?;
+                            Ok(serde_json::json!({
+                                "content": [{ "type": "text", "text": text }],
+                                "isError": false
+                            }))
+                        }
+                        Err(e) => Ok(serde_json::json!({
+                            "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
+                            "isError": true
+                        })),
+                    }
                 }
             }
             "list_ports" => {
-                let host = arguments
-                    .get("host")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| anyhow::anyhow!("Missing 'host' argument"))?;
-
+                let (hosts, is_multi) = parse_hosts(&arguments)?;
                 let filter_port = arguments
                     .get("port")
                     .and_then(|v| v.as_u64())
                     .map(|n| n as u32);
 
-                let cmd = "ss -tulpn 2>/dev/null || ss -tuln 2>/dev/null || netstat -tulpn 2>/dev/null || netstat -tuln 2>/dev/null";
-                match self.pool.execute_command(host, cmd).await {
-                    Ok((stdout, stderr, exit_code)) => {
-                        if exit_code != 0 {
-                            let text = format!(
-                                "Error executing ports command (exit code {}):\n{}",
-                                exit_code, stderr
-                            );
-                            return Ok(serde_json::json!({
-                                "content": [{ "type": "text", "text": text }],
-                                "isError": true
-                            }));
+                let run_ports = {
+                    let pool = self.pool.clone();
+                    move |host: String| {
+                        let pool = pool.clone();
+                        async move {
+                            let cmd = "ss -tulpn 2>/dev/null || ss -tuln 2>/dev/null || netstat -tulpn 2>/dev/null || netstat -tuln 2>/dev/null";
+                            let (stdout, stderr, exit_code) = pool.execute_command(&host, cmd).await?;
+                            if exit_code != 0 {
+                                anyhow::bail!("Error executing ports command (exit code {}):\n{}", exit_code, stderr);
+                            }
+                            let ports = parse_listening_ports(&stdout, filter_port);
+                            Ok(serde_json::to_value(&ports)?)
                         }
-                        let ports = parse_listening_ports(&stdout, filter_port);
-                        let text = serde_json::to_string_pretty(&ports)?;
-                        Ok(serde_json::json!({
-                            "content": [{ "type": "text", "text": text }],
-                            "isError": false
-                        }))
                     }
-                    Err(e) => Ok(serde_json::json!({
-                        "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
-                        "isError": true
-                    })),
+                };
+
+                if is_multi {
+                    let results = execute_on_hosts(hosts, 15, run_ports).await?;
+                    let text = serde_json::to_string_pretty(&results)?;
+                    Ok(serde_json::json!({
+                        "content": [{ "type": "text", "text": text }],
+                        "isError": false
+                    }))
+                } else {
+                    let host = &hosts[0];
+                    match run_ports(host.to_string()).await {
+                        Ok(ports_val) => {
+                            let text = serde_json::to_string_pretty(&ports_val)?;
+                            Ok(serde_json::json!({
+                                "content": [{ "type": "text", "text": text }],
+                                "isError": false
+                            }))
+                        }
+                        Err(e) => Ok(serde_json::json!({
+                            "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
+                            "isError": true
+                        })),
+                    }
                 }
             }
             "run_command" => {
-                let host = arguments
-                    .get("host")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| anyhow::anyhow!("Missing 'host' argument"))?;
-
+                let (hosts, is_multi) = parse_hosts(&arguments)?;
                 let command = arguments
                     .get("command")
                     .and_then(|v| v.as_str())
@@ -662,40 +734,50 @@ impl McpServer {
                     .map(|n| n as usize)
                     .unwrap_or(100);
 
-                match self.pool.execute_command(host, command).await {
-                    Ok((stdout, stderr, exit_code)) => {
-                        let stdout_final = if abbreviate {
-                            abbreviate_output(&stdout, max_lines)
-                        } else {
-                            stdout
-                        };
-
-                        let result_payload = serde_json::json!({
-                            "stdout": stdout_final,
-                            "stderr": stderr,
-                            "exit_code": exit_code
-                        });
-
-                        let text = serde_json::to_string_pretty(&result_payload)?;
-                        Ok(serde_json::json!({
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": text
-                                }
-                            ],
-                            "isError": false
-                        }))
+                let run_cmd = {
+                    let pool = self.pool.clone();
+                    let command = command.to_string();
+                    move |host: String| {
+                        let pool = pool.clone();
+                        let command = command.clone();
+                        async move {
+                            let (stdout, stderr, exit_code) = pool.execute_command(&host, &command).await?;
+                            let stdout_final = if abbreviate {
+                                abbreviate_output(&stdout, max_lines)
+                            } else {
+                                stdout
+                            };
+                            Ok(serde_json::json!({
+                                "stdout": stdout_final,
+                                "stderr": stderr,
+                                "exit_code": exit_code
+                            }))
+                        }
                     }
-                    Err(e) => Ok(serde_json::json!({
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": format!("Error: {:#}", e)
-                            }
-                        ],
-                        "isError": true
-                    })),
+                };
+
+                if is_multi {
+                    let results = execute_on_hosts(hosts, 15, run_cmd).await?;
+                    let text = serde_json::to_string_pretty(&results)?;
+                    Ok(serde_json::json!({
+                        "content": [{ "type": "text", "text": text }],
+                        "isError": false
+                    }))
+                } else {
+                    let host = &hosts[0];
+                    match run_cmd(host.to_string()).await {
+                        Ok(result_payload) => {
+                            let text = serde_json::to_string_pretty(&result_payload)?;
+                            Ok(serde_json::json!({
+                                "content": [{ "type": "text", "text": text }],
+                                "isError": false
+                            }))
+                        }
+                        Err(e) => Ok(serde_json::json!({
+                            "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
+                            "isError": true
+                        })),
+                    }
                 }
             }
             "run_command_multi" => {
@@ -799,11 +881,7 @@ impl McpServer {
                 }))
             }
             "search_processes" => {
-                let host = arguments
-                    .get("host")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| anyhow::anyhow!("Missing 'host' argument"))?;
-
+                let (hosts, is_multi) = parse_hosts(&arguments)?;
                 let pattern = arguments
                     .get("pattern")
                     .and_then(|v| v.as_str())
@@ -820,96 +898,92 @@ impl McpServer {
                     .build()
                     .map_err(|e| anyhow::anyhow!("Invalid regex pattern: {}", e))?;
 
-                // POSIX-standard process listing
-                match self
-                    .pool
-                    .execute_command(host, "ps -eo pid,user,%cpu,%mem,args")
-                    .await
-                {
-                    Ok((stdout, stderr, exit_code)) => {
-                        if exit_code != 0 {
-                            let text = format!(
-                                "Error running ps command (exit code {}):\n{}",
-                                exit_code, stderr
-                            );
-                            return Ok(serde_json::json!({
-                                "content": [{ "type": "text", "text": text }],
-                                "isError": true
-                            }));
-                        }
-
-                        let mut results = Vec::new();
-
-                        for line in stdout.lines() {
-                            let trimmed = line.trim();
-                            if trimmed.is_empty() {
-                                continue;
+                let run_search = {
+                    let pool = self.pool.clone();
+                    let re = re.clone();
+                    move |host: String| {
+                        let pool = pool.clone();
+                        let re = re.clone();
+                        async move {
+                            // POSIX-standard process listing
+                            let (stdout, stderr, exit_code) = pool.execute_command(&host, "ps -eo pid,user,%cpu,%mem,args").await?;
+                            if exit_code != 0 {
+                                anyhow::bail!("Error running ps command (exit code {}):\n{}", exit_code, stderr);
                             }
 
-                            // Split by whitespace
-                            let parts: Vec<&str> = trimmed.split_whitespace().collect();
-                            if parts.len() < 5 {
-                                continue;
-                            }
+                            let mut results = Vec::new();
+                            for line in stdout.lines() {
+                                let trimmed = line.trim();
+                                if trimmed.is_empty() {
+                                    continue;
+                                }
 
-                            // If the first column doesn't parse as PID, it's the header row or invalid
-                            let pid = match parts[0].parse::<u32>() {
-                                Ok(p) => p,
-                                Err(_) => continue,
-                            };
+                                // Split by whitespace
+                                let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                                if parts.len() < 5 {
+                                    continue;
+                                }
 
-                            let user = parts[1];
-                            let cpu = parts[2];
-                            let mem = parts[3];
-                            let command = parts[4..].join(" ");
+                                // If the first column doesn't parse as PID, it's the header row or invalid
+                                let pid = match parts[0].parse::<u32>() {
+                                    Ok(p) => p,
+                                    Err(_) => continue,
+                                };
 
-                            // Filter using the regex on the command line
-                            if re.is_match(&command) {
-                                if full_info {
-                                    results.push(serde_json::json!({
-                                        "pid": pid,
-                                        "user": user,
-                                        "cpu": cpu,
-                                        "mem": mem,
-                                        "command": command
-                                    }));
-                                } else {
-                                    results.push(serde_json::json!({
-                                        "pid": pid,
-                                        "command": command
-                                    }));
+                                let user = parts[1];
+                                let cpu = parts[2];
+                                let mem = parts[3];
+                                let command = parts[4..].join(" ");
+
+                                // Filter using the regex on the command line
+                                if re.is_match(&command) {
+                                    if full_info {
+                                        results.push(serde_json::json!({
+                                            "pid": pid,
+                                            "user": user,
+                                            "cpu": cpu,
+                                            "mem": mem,
+                                            "command": command
+                                        }));
+                                    } else {
+                                        results.push(serde_json::json!({
+                                            "pid": pid,
+                                            "command": command
+                                        }));
+                                    }
                                 }
                             }
+                            Ok(serde_json::Value::Array(results))
                         }
-
-                        let text = serde_json::to_string_pretty(&results)?;
-                        Ok(serde_json::json!({
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": text
-                                }
-                            ],
-                            "isError": false
-                        }))
                     }
-                    Err(e) => Ok(serde_json::json!({
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": format!("Error: {:#}", e)
-                            }
-                        ],
-                        "isError": true
-                    })),
+                };
+
+                if is_multi {
+                    let results = execute_on_hosts(hosts, 15, run_search).await?;
+                    let text = serde_json::to_string_pretty(&results)?;
+                    Ok(serde_json::json!({
+                        "content": [{ "type": "text", "text": text }],
+                        "isError": false
+                    }))
+                } else {
+                    let host = &hosts[0];
+                    match run_search(host.to_string()).await {
+                        Ok(results_val) => {
+                            let text = serde_json::to_string_pretty(&results_val)?;
+                            Ok(serde_json::json!({
+                                "content": [{ "type": "text", "text": text }],
+                                "isError": false
+                            }))
+                        }
+                        Err(e) => Ok(serde_json::json!({
+                            "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
+                            "isError": true
+                        })),
+                    }
                 }
             }
             "tail_log" => {
-                let host = arguments
-                    .get("host")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| anyhow::anyhow!("Missing 'host' argument"))?;
-
+                let (hosts, is_multi) = parse_hosts(&arguments)?;
                 let file_path = arguments
                     .get("file_path")
                     .and_then(|v| v.as_str())
@@ -920,33 +994,49 @@ impl McpServer {
                     .and_then(|v| v.as_u64())
                     .unwrap_or(50);
 
-                let command = format!("tail -n {} {}", lines, file_path);
-
-                match self.pool.execute_command(host, &command).await {
-                    Ok((stdout, stderr, exit_code)) => {
-                        let is_error = exit_code != 0;
-                        let text = if is_error {
-                            format!("Error tailing file (exit code {}):\n{}", exit_code, stderr)
-                        } else {
-                            stdout
-                        };
-                        Ok(serde_json::json!({
-                            "content": [{ "type": "text", "text": text }],
-                            "isError": is_error
-                        }))
+                let run_tail = {
+                    let pool = self.pool.clone();
+                    let file_path = file_path.to_string();
+                    move |host: String| {
+                        let pool = pool.clone();
+                        let file_path = file_path.clone();
+                        async move {
+                            let command = format!("tail -n {} {}", lines, file_path);
+                            let (stdout, stderr, exit_code) = pool.execute_command(&host, &command).await?;
+                            if exit_code != 0 {
+                                anyhow::bail!("Error tailing file (exit code {}):\n{}", exit_code, stderr);
+                            }
+                            Ok(serde_json::json!(stdout))
+                        }
                     }
-                    Err(e) => Ok(serde_json::json!({
-                        "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
-                        "isError": true
-                    })),
+                };
+
+                if is_multi {
+                    let results = execute_on_hosts(hosts, 15, run_tail).await?;
+                    let text = serde_json::to_string_pretty(&results)?;
+                    Ok(serde_json::json!({
+                        "content": [{ "type": "text", "text": text }],
+                        "isError": false
+                    }))
+                } else {
+                    let host = &hosts[0];
+                    match run_tail(host.to_string()).await {
+                        Ok(stdout_val) => {
+                            let text = stdout_val.as_str().unwrap_or("").to_string();
+                            Ok(serde_json::json!({
+                                "content": [{ "type": "text", "text": text }],
+                                "isError": false
+                            }))
+                        }
+                        Err(e) => Ok(serde_json::json!({
+                            "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
+                            "isError": true
+                        })),
+                    }
                 }
             }
             "tail_container_logs" => {
-                let host = arguments
-                    .get("host")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| anyhow::anyhow!("Missing 'host' argument"))?;
-
+                let (hosts, is_multi) = parse_hosts(&arguments)?;
                 let container = arguments
                     .get("container")
                     .and_then(|v| v.as_str())
@@ -962,43 +1052,57 @@ impl McpServer {
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
 
-                let ts_flag = if timestamps { "-t" } else { "" };
-                let command = format!("docker logs --tail {} {} {}", lines, ts_flag, container);
-
-                match self.pool.execute_command(host, &command).await {
-                    Ok((stdout, stderr, exit_code)) => {
-                        let is_error = exit_code != 0;
-                        let text = if is_error {
-                            format!(
-                                "Error fetching container logs (exit code {}):\n{}",
-                                exit_code, stderr
-                            )
-                        } else {
-                            if stdout.is_empty() && !stderr.is_empty() {
+                let run_container_logs = {
+                    let pool = self.pool.clone();
+                    let container = container.to_string();
+                    move |host: String| {
+                        let pool = pool.clone();
+                        let container = container.clone();
+                        async move {
+                            let ts_flag = if timestamps { "-t" } else { "" };
+                            let command = format!("docker logs --tail {} {} {}", lines, ts_flag, container);
+                            let (stdout, stderr, exit_code) = pool.execute_command(&host, &command).await?;
+                            if exit_code != 0 {
+                                anyhow::bail!("Error fetching container logs (exit code {}):\n{}", exit_code, stderr);
+                            }
+                            let text = if stdout.is_empty() && !stderr.is_empty() {
                                 stderr
                             } else {
                                 stdout
-                            }
-                        };
-                        Ok(serde_json::json!({
-                            "content": [{ "type": "text", "text": text }],
-                            "isError": is_error
-                        }))
+                            };
+                            Ok(serde_json::json!(text))
+                        }
                     }
-                    Err(e) => Ok(serde_json::json!({
-                        "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
-                        "isError": true
-                    })),
+                };
+
+                if is_multi {
+                    let results = execute_on_hosts(hosts, 15, run_container_logs).await?;
+                    let text = serde_json::to_string_pretty(&results)?;
+                    Ok(serde_json::json!({
+                        "content": [{ "type": "text", "text": text }],
+                        "isError": false
+                    }))
+                } else {
+                    let host = &hosts[0];
+                    match run_container_logs(host.to_string()).await {
+                        Ok(stdout_val) => {
+                            let text = stdout_val.as_str().unwrap_or("").to_string();
+                            Ok(serde_json::json!({
+                                "content": [{ "type": "text", "text": text }],
+                                "isError": false
+                            }))
+                        }
+                        Err(e) => Ok(serde_json::json!({
+                            "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
+                            "isError": true
+                        })),
+                    }
                 }
             }
             "wait_for_log_pattern" => {
-                let host = arguments
-                    .get("host")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| anyhow::anyhow!("Missing 'host' argument"))?;
-
-                let file_path = arguments.get("file_path").and_then(|v| v.as_str());
-                let container = arguments.get("container").and_then(|v| v.as_str());
+                let (hosts, is_multi) = parse_hosts(&arguments)?;
+                let file_path = arguments.get("file_path").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let container = arguments.get("container").and_then(|v| v.as_str()).map(|s| s.to_string());
 
                 if file_path.is_none() && container.is_none() {
                     return Err(anyhow::anyhow!(
@@ -1026,127 +1130,163 @@ impl McpServer {
                     .build()
                     .map_err(|e| anyhow::anyhow!("Invalid regex pattern: {}", e))?;
 
-                let cmd = if let Some(path) = file_path {
-                    format!("tail -f -n 10 {}", path)
-                } else {
-                    format!("docker logs -f --tail 10 {}", container.unwrap())
-                };
+                let run_wait_pattern = {
+                    let pool = self.pool.clone();
+                    let file_path = file_path.clone();
+                    let container = container.clone();
+                    let re = re.clone();
+                    let pattern = pattern.to_string();
+                    move |host: String| {
+                        let pool = pool.clone();
+                        let file_path = file_path.clone();
+                        let container = container.clone();
+                        let re = re.clone();
+                        let pattern = pattern.clone();
+                        async move {
+                            let cmd = if let Some(path) = &file_path {
+                                format!("tail -f -n 10 {}", path)
+                            } else {
+                                format!("docker logs -f --tail 10 {}", container.as_ref().unwrap())
+                            };
 
-                let handle = self.pool.get_connection(host).await?;
-                let mut channel = handle
-                    .channel_open_session()
-                    .await
-                    .context("Failed to open SSH channel")?;
+                            let handle = pool.get_connection(&host).await?;
+                            let mut channel = handle
+                                .channel_open_session()
+                                .await
+                                .context("Failed to open SSH channel")?;
 
-                channel
-                    .exec(true, cmd)
-                    .await
-                    .context("Failed to execute tail/log command")?;
+                            channel
+                                .exec(true, cmd)
+                                .await
+                                .context("Failed to execute tail/log command")?;
 
-                let mut stdout_buf = Vec::new();
-                let mut matched_line = None;
-                let mut error_msg = None;
+                            let mut stdout_buf = Vec::new();
+                            let mut matched_line = None;
+                            let mut error_msg = None;
 
-                let sleep_duration = Duration::from_millis(50);
-                let start_time = std::time::Instant::now();
-                let timeout = Duration::from_secs(timeout_secs);
+                            let sleep_duration = Duration::from_millis(50);
+                            let start_time = std::time::Instant::now();
+                            let timeout = Duration::from_secs(timeout_secs);
 
-                loop {
-                    if start_time.elapsed() >= timeout {
-                        error_msg = Some(format!(
-                            "Timed out after {} seconds waiting for pattern '{}'",
-                            timeout_secs, pattern
-                        ));
-                        break;
-                    }
-
-                    match tokio::time::timeout(sleep_duration, channel.wait()).await {
-                        Ok(Some(russh::ChannelMsg::Data { data })) => {
-                            stdout_buf.extend_from_slice(&data);
-
-                            let mut found = false;
-                            while let Some(pos) = stdout_buf.iter().position(|&b| b == b'\n') {
-                                let line_bytes: Vec<u8> = stdout_buf.drain(..=pos).collect();
-                                let line_str =
-                                    String::from_utf8_lossy(&line_bytes[..line_bytes.len() - 1])
-                                        .into_owned();
-                                if re.is_match(&line_str) {
-                                    matched_line = Some(line_str);
-                                    found = true;
+                            loop {
+                                if start_time.elapsed() >= timeout {
+                                    error_msg = Some(format!(
+                                        "Timed out after {} seconds waiting for pattern '{}'",
+                                        timeout_secs, pattern
+                                    ));
                                     break;
                                 }
-                            }
-                            if found {
-                                break;
-                            }
-                        }
-                        Ok(Some(russh::ChannelMsg::ExtendedData { data, ext })) => {
-                            if ext == 1 {
-                                stdout_buf.extend_from_slice(&data);
 
-                                let mut found = false;
-                                while let Some(pos) = stdout_buf.iter().position(|&b| b == b'\n') {
-                                    let line_bytes: Vec<u8> = stdout_buf.drain(..=pos).collect();
-                                    let line_str = String::from_utf8_lossy(
-                                        &line_bytes[..line_bytes.len() - 1],
-                                    )
-                                    .into_owned();
-                                    if re.is_match(&line_str) {
-                                        matched_line = Some(line_str);
-                                        found = true;
+                                match tokio::time::timeout(sleep_duration, channel.wait()).await {
+                                    Ok(Some(russh::ChannelMsg::Data { data })) => {
+                                        stdout_buf.extend_from_slice(&data);
+
+                                        let mut found = false;
+                                        while let Some(pos) = stdout_buf.iter().position(|&b| b == b'\n') {
+                                            let line_bytes: Vec<u8> = stdout_buf.drain(..=pos).collect();
+                                            let line_str =
+                                                String::from_utf8_lossy(&line_bytes[..line_bytes.len() - 1])
+                                                    .into_owned();
+                                            if re.is_match(&line_str) {
+                                                matched_line = Some(line_str);
+                                                found = true;
+                                                break;
+                                            }
+                                        }
+                                        if found {
+                                            break;
+                                        }
+                                    }
+                                    Ok(Some(russh::ChannelMsg::ExtendedData { data, ext })) => {
+                                        if ext == 1 {
+                                            stdout_buf.extend_from_slice(&data);
+
+                                            let mut found = false;
+                                            while let Some(pos) = stdout_buf.iter().position(|&b| b == b'\n') {
+                                                let line_bytes: Vec<u8> = stdout_buf.drain(..=pos).collect();
+                                                let line_str = String::from_utf8_lossy(
+                                                    &line_bytes[..line_bytes.len() - 1],
+                                                )
+                                                .into_owned();
+                                                if re.is_match(&line_str) {
+                                                    matched_line = Some(line_str);
+                                                    found = true;
+                                                    break;
+                                                }
+                                            }
+                                            if found {
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    Ok(Some(russh::ChannelMsg::ExitStatus { exit_status })) => {
+                                        if exit_status != 0 {
+                                            error_msg =
+                                                Some(format!("Command exited with status {}", exit_status));
+                                        }
                                         break;
                                     }
-                                }
-                                if found {
-                                    break;
+                                    Ok(None) => {
+                                        break;
+                                    }
+                                    Err(_) => {
+                                        // Timeout elapsed, loop again to check total timeout
+                                    }
+                                    _ => {}
                                 }
                             }
-                        }
-                        Ok(Some(russh::ChannelMsg::ExitStatus { exit_status })) => {
-                            if exit_status != 0 {
-                                error_msg =
-                                    Some(format!("Command exited with status {}", exit_status));
+
+                            if matched_line.is_none() && error_msg.is_none() && !stdout_buf.is_empty() {
+                                let line_str = String::from_utf8_lossy(&stdout_buf).into_owned();
+                                if re.is_match(&line_str) {
+                                    matched_line = Some(line_str);
+                                }
                             }
-                            break;
+
+                            let _ = channel.close().await;
+
+                            if let Some(line) = matched_line {
+                                Ok(serde_json::json!(line))
+                            } else {
+                                let err = error_msg.unwrap_or_else(|| {
+                                    "Connection closed before pattern was matched".to_string()
+                                });
+                                anyhow::bail!("{}", err);
+                            }
                         }
-                        Ok(None) => {
-                            break;
-                        }
-                        Err(_) => {
-                            // Timeout elapsed, loop again to check total timeout
-                        }
-                        _ => {}
                     }
-                }
+                };
 
-                if matched_line.is_none() && error_msg.is_none() && !stdout_buf.is_empty() {
-                    let line_str = String::from_utf8_lossy(&stdout_buf).into_owned();
-                    if re.is_match(&line_str) {
-                        matched_line = Some(line_str);
-                    }
-                }
-
-                let _ = channel.close().await;
-
-                if let Some(line) = matched_line {
+                if is_multi {
+                    let results = execute_on_hosts(hosts, timeout_secs + 5, run_wait_pattern).await?;
+                    let text = serde_json::to_string_pretty(&results)?;
                     Ok(serde_json::json!({
-                        "content": [{
-                            "type": "text",
-                            "text": format!("Pattern matched! Line found:\n{}", line)
-                        }],
+                        "content": [{ "type": "text", "text": text }],
                         "isError": false
                     }))
                 } else {
-                    let err = error_msg.unwrap_or_else(|| {
-                        "Connection closed before pattern was matched".to_string()
-                    });
-                    Ok(serde_json::json!({
-                        "content": [{
-                            "type": "text",
-                            "text": err
-                        }],
-                        "isError": true
-                    }))
+                    let host = &hosts[0];
+                    match run_wait_pattern(host.to_string()).await {
+                        Ok(matched_line_val) => {
+                            let line = matched_line_val.as_str().unwrap_or("").to_string();
+                            Ok(serde_json::json!({
+                                "content": [{
+                                    "type": "text",
+                                    "text": format!("Pattern matched! Line found:\n{}", line)
+                                }],
+                                "isError": false
+                            }))
+                        }
+                        Err(e) => {
+                            Ok(serde_json::json!({
+                                "content": [{
+                                    "type": "text",
+                                    "text": format!("{:#}", e)
+                                }],
+                                "isError": true
+                            }))
+                        }
+                    }
                 }
             }
             _ => Err(anyhow::anyhow!("Unknown tool: {}", name)),
@@ -1433,6 +1573,78 @@ fn parse_listening_ports(raw_output: &str, filter_port: Option<u32>) -> Vec<List
     results
 }
 
+pub fn parse_hosts(arguments: &serde_json::Value) -> anyhow::Result<(Vec<String>, bool)> {
+    if let Some(hosts_val) = arguments.get("hosts") {
+        let hosts: Vec<String> = if let Some(arr) = hosts_val.as_array() {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        } else if let Some(s) = hosts_val.as_str() {
+            vec![s.to_string()]
+        } else {
+            anyhow::bail!("Invalid 'hosts' argument: must be an array of strings");
+        };
+        if hosts.is_empty() {
+            anyhow::bail!("The 'hosts' list cannot be empty");
+        }
+        Ok((hosts, true))
+    } else if let Some(host_val) = arguments.get("host").and_then(|v| v.as_str()) {
+        Ok((vec![host_val.to_string()], false))
+    } else {
+        anyhow::bail!("Missing target host(s): specify either 'host' (string) or 'hosts' (array of strings)");
+    }
+}
+
+pub async fn execute_on_hosts<F, Fut>(
+    hosts: Vec<String>,
+    timeout_secs: u64,
+    f: F,
+) -> anyhow::Result<serde_json::Value>
+where
+    F: Fn(String) -> Fut + Send + Sync + 'static,
+    Fut: std::future::Future<Output = anyhow::Result<serde_json::Value>> + Send,
+{
+    let mut join_set = tokio::task::JoinSet::new();
+    let f_arc = std::sync::Arc::new(f);
+    for host in hosts {
+        let f_clone = f_arc.clone();
+        join_set.spawn(async move {
+            let fut = f_clone(host.clone());
+            let timeout_dur = std::time::Duration::from_secs(timeout_secs);
+            let result = tokio::time::timeout(timeout_dur, fut).await;
+
+            let payload = match result {
+                Ok(Ok(val)) => serde_json::json!({
+                    "status": "success",
+                    "data": val
+                }),
+                Ok(Err(e)) => serde_json::json!({
+                    "status": "error",
+                    "error": format!("{:#}", e)
+                }),
+                Err(_) => serde_json::json!({
+                    "status": "timeout",
+                    "error": format!("Timed out after {} seconds", timeout_secs)
+                }),
+            };
+            (host, payload)
+        });
+    }
+
+    let mut results_map = serde_json::Map::new();
+    while let Some(res) = join_set.join_next().await {
+        match res {
+            Ok((host, payload)) => {
+                results_map.insert(host, payload);
+            }
+            Err(e) => {
+                eprintln!("Task join error in execute_on_hosts: {:?}", e);
+            }
+        }
+    }
+    Ok(serde_json::Value::Object(results_map))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1572,4 +1784,49 @@ udp   UNCONN 0      0            0.0.0.0:53          0.0.0.0:*     users:((\"nam
         };
         assert_eq!(single_host, vec!["host1".to_string()]);
     }
+
+    #[test]
+    fn test_parse_hosts_helper() {
+        // Test single host
+        let args_single = serde_json::json!({ "host": "localhost" });
+        let (hosts, is_multi) = parse_hosts(&args_single).unwrap();
+        assert!(!is_multi);
+        assert_eq!(hosts, vec!["localhost".to_string()]);
+
+        // Test multiple hosts as array
+        let args_multi = serde_json::json!({ "hosts": ["host1", "host2"] });
+        let (hosts, is_multi) = parse_hosts(&args_multi).unwrap();
+        assert!(is_multi);
+        assert_eq!(hosts, vec!["host1".to_string(), "host2".to_string()]);
+
+        // Test multiple hosts as string
+        let args_multi_str = serde_json::json!({ "hosts": "host1" });
+        let (hosts, is_multi) = parse_hosts(&args_multi_str).unwrap();
+        assert!(is_multi);
+        assert_eq!(hosts, vec!["host1".to_string()]);
+
+        // Test error cases
+        let args_none = serde_json::json!({});
+        assert!(parse_hosts(&args_none).is_err());
+
+        let args_empty_arr = serde_json::json!({ "hosts": [] });
+        assert!(parse_hosts(&args_empty_arr).is_err());
+    }
+
+    #[tokio::test]
+    async fn test_execute_on_hosts_helper() {
+        let hosts = vec!["host1".to_string(), "host2".to_string()];
+        let run_fn = |_host: String| async {
+            Ok(serde_json::json!("hello"))
+        };
+
+        let result = execute_on_hosts(hosts, 5, run_fn).await.unwrap();
+        let map = result.as_object().unwrap();
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.get("host1").unwrap().get("status").unwrap(), "success");
+        assert_eq!(map.get("host1").unwrap().get("data").unwrap(), "hello");
+        assert_eq!(map.get("host2").unwrap().get("status").unwrap(), "success");
+        assert_eq!(map.get("host2").unwrap().get("data").unwrap(), "hello");
+    }
 }
+
