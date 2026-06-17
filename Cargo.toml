@@ -15,7 +15,7 @@ serde_json = "1"
 glob = "0.3"
 home = "0.5"
 async-trait = "0.1"
-toml = "0.8"
+toml = "1.0"
 regex = "1"
 clap = { version = "4", features = ["derive"] }
 mcp-agent-install = { path = "mcp-agent-install" }
