@@ -22,13 +22,5 @@ async-trait = "0.1"
 toml = "1.0"
 regex = "1"
 clap = { version = "4", features = ["derive"] }
-mcp-agent-install = { path = "mcp-agent-install", version = "0.1.0" }
-
 [dev-dependencies]
 tempfile = "3"
-
-[workspace]
-members = [
-    ".",
-    "mcp-agent-install",
-]

@@ -1,4 +1,4 @@
-// Rust guideline compliant 2025-10-17
+#![allow(dead_code)]
 //! Agent integration layer for CLI tools (Claude Code, `OpenCode`, Codex, etc.).
 //!
 //! Each supported agent implements the [`AgentIntegration`] trait which provides
@@ -26,8 +26,6 @@ pub mod zed;
 use std::path::{Path, PathBuf};
 
 use clap::ValueEnum;
-
-pub mod errors;
 
 use crate::errors::{AgenticSshError, Result};
 

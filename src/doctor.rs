@@ -5,7 +5,7 @@
 
 use crate::ssh_config;
 use crate::ssh_pool;
-use mcp_agent_install::{self as agents, DoctorCounters, HealthcheckContext};
+use crate::agents::{self, DoctorCounters, HealthcheckContext};
 use std::path::PathBuf;
 
 /// Runs a comprehensive health check of the agentic_ssh installation.

@@ -54,7 +54,6 @@ dependencies = [
  "clap",
  "glob",
  "home",
- "mcp-agent-install",
  "mimalloc",
  "regex",
  "russh",
@@ -2481,20 +2480,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "mcp-agent-install"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "glob",
- "home",
- "serde",
- "serde_json",
- "tempfile",
- "toml",
 ]
 
 [[package]]
