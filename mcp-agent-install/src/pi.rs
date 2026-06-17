@@ -29,9 +29,10 @@ pub struct PiIntegration;
 /// otherwise falls back to `<home>/.pi/agent/mcp.json`.
 fn pi_config_path(home: &Path) -> PathBuf {
     if let Ok(dir) = std::env::var("PI_CODING_AGENT_DIR")
-        && !dir.trim().is_empty() {
-            return PathBuf::from(dir).join("mcp.json");
-        }
+        && !dir.trim().is_empty()
+    {
+        return PathBuf::from(dir).join("mcp.json");
+    }
     home.join(".pi/agent/mcp.json")
 }
 

@@ -503,9 +503,9 @@ pub fn which_agentic_ssh() -> Option<String> {
             .file_name()
             .and_then(|n| n.to_str())
             .is_some_and(|n| n.starts_with("agentic_ssh"))
-        {
-            return Some(normalize_path_separators(&exe.to_string_lossy()));
-        }
+    {
+        return Some(normalize_path_separators(&exe.to_string_lossy()));
+    }
     // Fall back to PATH lookup
     let path_var = std::env::var("PATH").ok()?;
     let separator = if cfg!(windows) { ';' } else { ':' };
@@ -1183,15 +1183,16 @@ fn parse_gitconfig_value(path: &Path, section: &str, key: &str) -> Option<String
         }
         // Parse key = value
         if let Some((k, v)) = trimmed.split_once('=')
-            && k.trim().to_ascii_lowercase() == key_lower {
-                let v = v.trim();
-                // Strip surrounding quotes if present.
-                let v = v
-                    .strip_prefix('"')
-                    .and_then(|s| s.strip_suffix('"'))
-                    .unwrap_or(v);
-                return Some(v.to_string());
-            }
+            && k.trim().to_ascii_lowercase() == key_lower
+        {
+            let v = v.trim();
+            // Strip surrounding quotes if present.
+            let v = v
+                .strip_prefix('"')
+                .and_then(|s| s.strip_suffix('"'))
+                .unwrap_or(v);
+            return Some(v.to_string());
+        }
     }
     None
 }
@@ -1506,14 +1507,15 @@ mod git_hook_tests {
                 continue;
             }
             if let Some((k, v)) = trimmed.split_once('=')
-                && k.trim().to_ascii_lowercase() == key_lower {
-                    let v = v.trim();
-                    let v = v
-                        .strip_prefix('"')
-                        .and_then(|s| s.strip_suffix('"'))
-                        .unwrap_or(v);
-                    return Some(v.to_string());
-                }
+                && k.trim().to_ascii_lowercase() == key_lower
+            {
+                let v = v.trim();
+                let v = v
+                    .strip_prefix('"')
+                    .and_then(|s| s.strip_suffix('"'))
+                    .unwrap_or(v);
+                return Some(v.to_string());
+            }
         }
         None
     }

@@ -191,15 +191,16 @@ fn install_migrate_old_mcp(settings: &mut serde_json::Value, settings_path: &Pat
     if let Some(servers) = settings
         .get_mut("mcpServers")
         .and_then(|v| v.as_object_mut())
-        && servers.remove("agentic_ssh").is_some() {
-            if servers.is_empty() {
-                settings.as_object_mut().map(|o| o.remove("mcpServers"));
-            }
-            eprintln!(
-                "\x1b[32m✔\x1b[0m Removed agentic_ssh MCP server from old location ({})",
-                settings_path.display()
-            );
+        && servers.remove("agentic_ssh").is_some()
+    {
+        if servers.is_empty() {
+            settings.as_object_mut().map(|o| o.remove("mcpServers"));
         }
+        eprintln!(
+            "\x1b[32m✔\x1b[0m Removed agentic_ssh MCP server from old location ({})",
+            settings_path.display()
+        );
+    }
 }
 
 /// Add all agentic_ssh hooks (idempotent). Prints progress messages.
@@ -422,22 +423,21 @@ fn install_clean_local_config() {
     let mcp_json_path = project_path.join(".mcp.json");
     if mcp_json_path.exists()
         && let Ok(contents) = std::fs::read_to_string(&mcp_json_path)
-            && let Ok(mut mcp_val) = serde_json::from_str::<serde_json::Value>(&contents)
-                && let Some(servers) = mcp_val
-                    .get_mut("mcpServers")
-                    .and_then(|v| v.as_object_mut())
-                    && servers.remove("agentic_ssh").is_some() {
-                        if servers.is_empty() {
-                            std::fs::remove_file(&mcp_json_path).ok();
-                            eprintln!(
-                                "\x1b[32m✔\x1b[0m Removed local .mcp.json (using global config only)"
-                            );
-                        } else if backup_and_write_json(&mcp_json_path, &mcp_val) {
-                            eprintln!(
-                                "\x1b[32m✔\x1b[0m Removed agentic_ssh from local .mcp.json (using global config only)"
-                            );
-                        }
-                    }
+        && let Ok(mut mcp_val) = serde_json::from_str::<serde_json::Value>(&contents)
+        && let Some(servers) = mcp_val
+            .get_mut("mcpServers")
+            .and_then(|v| v.as_object_mut())
+        && servers.remove("agentic_ssh").is_some()
+    {
+        if servers.is_empty() {
+            std::fs::remove_file(&mcp_json_path).ok();
+            eprintln!("\x1b[32m✔\x1b[0m Removed local .mcp.json (using global config only)");
+        } else if backup_and_write_json(&mcp_json_path, &mcp_val) {
+            eprintln!(
+                "\x1b[32m✔\x1b[0m Removed agentic_ssh from local .mcp.json (using global config only)"
+            );
+        }
+    }
 
     let local_settings_path = project_path.join(".claude").join("settings.local.json");
     if local_settings_path.exists() {
@@ -472,12 +472,13 @@ fn clean_local_settings_file(project_path: &Path, local_settings_path: &Path) {
     if let Some(servers) = local_val
         .get_mut("mcpServers")
         .and_then(|v| v.as_object_mut())
-        && servers.remove("agentic_ssh").is_some() {
-            modified = true;
-            if servers.is_empty() {
-                local_val.as_object_mut().map(|o| o.remove("mcpServers"));
-            }
+        && servers.remove("agentic_ssh").is_some()
+    {
+        modified = true;
+        if servers.is_empty() {
+            local_val.as_object_mut().map(|o| o.remove("mcpServers"));
         }
+    }
 
     if modified {
         clean_orphaned_local_mcp_keys(&mut local_val);
@@ -577,13 +578,14 @@ fn uninstall_stale_mcp(settings: &mut serde_json::Value) -> bool {
     if let Some(servers) = settings
         .get_mut("mcpServers")
         .and_then(|v| v.as_object_mut())
-        && servers.remove("agentic_ssh").is_some() {
-            if servers.is_empty() {
-                settings.as_object_mut().map(|o| o.remove("mcpServers"));
-            }
-            eprintln!("\x1b[32m✔\x1b[0m Removed stale agentic_ssh MCP server from settings.json");
-            return true;
+        && servers.remove("agentic_ssh").is_some()
+    {
+        if servers.is_empty() {
+            settings.as_object_mut().map(|o| o.remove("mcpServers"));
         }
+        eprintln!("\x1b[32m✔\x1b[0m Removed stale agentic_ssh MCP server from settings.json");
+        return true;
+    }
     false
 }
 
@@ -818,9 +820,10 @@ fn doctor_check_settings_json(dc: &mut DoctorCounters, home: &Path) {
         && let Some(settings) = std::fs::read_to_string(&settings_path)
             .ok()
             .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).ok())
-            && settings["mcpServers"]["agentic_ssh"].is_object() {
-                dc.warn("Stale MCP server entry in ~/.claude/settings.json — run `agentic_ssh install` to migrate");
-            }
+        && settings["mcpServers"]["agentic_ssh"].is_object()
+    {
+        dc.warn("Stale MCP server entry in ~/.claude/settings.json — run `agentic_ssh install` to migrate");
+    }
 
     if !settings_path.exists() {
         dc.fail("~/.claude/settings.json not found — run `agentic_ssh install`");
@@ -1151,9 +1154,10 @@ pub fn check_install_stale() {
     // --- user-level settings: permissions warning + hook backfill ---
     let user_settings_path = home.join(".claude").join("settings.json");
     if let Ok(contents) = std::fs::read_to_string(&user_settings_path)
-        && let Ok(settings) = serde_json::from_str::<serde_json::Value>(&contents) {
-            warn_missing_permissions(&settings);
-        }
+        && let Ok(settings) = serde_json::from_str::<serde_json::Value>(&contents)
+    {
+        warn_missing_permissions(&settings);
+    }
     normalize_and_backfill_settings_file(&user_settings_path);
 
     // --- project-level settings: hook backfill only ---

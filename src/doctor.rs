@@ -3,10 +3,10 @@
 //!
 //! Checks the binary, SSH client, SSH config, pool daemon status, and agent integrations.
 
-use std::path::PathBuf;
-use mcp_agent_install::{self as agents, DoctorCounters, HealthcheckContext};
-use crate::ssh_pool;
 use crate::ssh_config;
+use crate::ssh_pool;
+use mcp_agent_install::{self as agents, DoctorCounters, HealthcheckContext};
+use std::path::PathBuf;
 
 /// Runs a comprehensive health check of the agentic_ssh installation.
 pub async fn run_doctor(agent_filter: Option<&str>) {
@@ -60,7 +60,7 @@ fn check_binary(dc: &mut DoctorCounters) {
 
 fn check_ssh_environment(dc: &mut DoctorCounters) {
     eprintln!("\n\x1b[1mSSH Environment\x1b[0m");
-    
+
     // Check if ssh command exists and runs
     match std::process::Command::new("ssh").arg("-V").output() {
         Ok(output) => {
@@ -82,7 +82,7 @@ fn check_ssh_environment(dc: &mut DoctorCounters) {
         let ssh_config_path = home.join(".ssh").join("config");
         if ssh_config_path.exists() {
             dc.pass(&format!("SSH config found: {}", ssh_config_path.display()));
-            
+
             // Check hosts parsed
             match ssh_config::list_ssh_hosts() {
                 Ok(hosts) => {
@@ -92,7 +92,10 @@ fn check_ssh_environment(dc: &mut DoctorCounters) {
                     } else {
                         // Print first 5 hosts as info
                         let limit = hosts.len().min(5);
-                        dc.info(&format!("First {limit} hosts: {}", hosts[..limit].join(", ")));
+                        dc.info(&format!(
+                            "First {limit} hosts: {}",
+                            hosts[..limit].join(", ")
+                        ));
                         if hosts.len() > limit {
                             dc.info(&format!("... and {} more", hosts.len() - limit));
                         }
@@ -128,7 +131,9 @@ fn check_daemon_status(dc: &mut DoctorCounters) {
             serde_json::from_reader::<_, Vec<ssh_pool::ConnectionStatus>>(file).ok()
         }) {
             let active_count = statuses.len();
-            dc.pass(&format!("Found {active_count} connection(s) in active pool status"));
+            dc.pass(&format!(
+                "Found {active_count} connection(s) in active pool status"
+            ));
             for status in statuses {
                 dc.info(&format!(
                     "• Host: {}, Idle Timeout: {}s",

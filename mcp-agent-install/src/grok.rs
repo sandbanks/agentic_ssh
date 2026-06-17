@@ -321,9 +321,10 @@ fn doctor_check_config(dc: &mut DoctorCounters, config_path: &Path) {
 
     if let Some(s) = server {
         if let Some(cmd) = s.get("command").and_then(|v| v.as_str())
-            && !cmd.is_empty() {
-                dc.pass(&format!("MCP server command present: {cmd}"));
-            }
+            && !cmd.is_empty()
+        {
+            dc.pass(&format!("MCP server command present: {cmd}"));
+        }
         let has_serve = s
             .get("args")
             .and_then(|v| v.as_array())
