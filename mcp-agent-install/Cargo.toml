@@ -2,6 +2,11 @@
 name = "mcp-agent-install"
 version = "0.1.0"
 edition = "2024"
+description = "MCP server configuration installer for AI agents (Claude, Cline, Cursor, Zed, etc.)"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/sandbanks/agentic_ssh"
+homepage = "https://github.com/sandbanks/agentic_ssh"
+documentation = "https://docs.rs/mcp-agent-install"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

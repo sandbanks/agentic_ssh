@@ -2,6 +2,11 @@
 name = "agentic_ssh"
 version = "0.1.2"
 edition = "2024"
+description = "SSH connection pooling and MCP server for AI agents"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/sandbanks/agentic_ssh"
+homepage = "https://github.com/sandbanks/agentic_ssh"
+documentation = "https://docs.rs/agentic_ssh"
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
@@ -17,7 +22,7 @@ async-trait = "0.1"
 toml = "1.0"
 regex = "1"
 clap = { version = "4", features = ["derive"] }
-mcp-agent-install = { path = "mcp-agent-install" }
+mcp-agent-install = { path = "mcp-agent-install", version = "0.1.0" }
 
 [dev-dependencies]
 tempfile = "3"
