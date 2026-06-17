@@ -62,7 +62,7 @@ jobs:
         if: matrix.archive == 'tar.gz'
         run: |
           cd target/${{ matrix.target }}/release
-          tar czf ../../../tokensave-${{ github.ref_name }}-${{ matrix.name }}.tar.gz tokensave
+          tar czf ../../../agentic_ssh-${{ github.ref_name }}-${{ matrix.name }}.tar.gz agentic_ssh
           cd ../../..
 
       - name: Upload binary archive (unix)
@@ -70,7 +70,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
-        run: gh release upload ${{ github.ref_name }} tokensave-${{ github.ref_name }}-${{ matrix.name }}.${{ matrix.archive }} --clobber
+        run: gh release upload ${{ github.ref_name }} agentic_ssh-${{ github.ref_name }}-${{ matrix.name }}.${{ matrix.archive }} --clobber
 
   # publish-crate:
   #   name: Publish to crates.io
