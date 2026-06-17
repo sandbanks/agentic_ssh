@@ -72,17 +72,17 @@ jobs:
         shell: bash
         run: gh release upload ${{ github.ref_name }} agentic_ssh-${{ github.ref_name }}-${{ matrix.name }}.${{ matrix.archive }} --clobber
 
-  # publish-crate:
-  #   name: Publish to crates.io
-  #   if: github.event_name == 'release' && !github.event.release.prerelease
-  #   needs: build
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v5
+  publish-crate:
+    name: Publish to crates.io
+    if: github.event_name == 'release' && !github.event.release.prerelease
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
 
-  #     - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
 
-  #     - name: Publish
-  #       run: cargo publish
-  #       env:
-  #         CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Publish
+        run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
