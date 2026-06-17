@@ -10,11 +10,11 @@ use std::path::Path;
 
 use serde_json::json;
 
-use crate::errors::{Result, AgenticSshError};
+use crate::errors::{AgenticSshError, Result};
 
 use super::{
-    backup_and_write_json, backup_config_file, load_json_file, load_json_file_strict,
-    safe_write_json_file, AgentIntegration, DoctorCounters, HealthcheckContext, InstallContext,
+    AgentIntegration, DoctorCounters, HealthcheckContext, InstallContext, backup_and_write_json,
+    backup_config_file, load_json_file, load_json_file_strict, safe_write_json_file,
 };
 
 /// Gemini CLI agent.
@@ -271,7 +271,9 @@ fn doctor_check_settings(dc: &mut DoctorCounters, home: &Path) {
     }
 
     let settings = load_json_file(&settings_path);
-    let server = settings.get("mcpServers").and_then(|v| v.get("agentic_ssh"));
+    let server = settings
+        .get("mcpServers")
+        .and_then(|v| v.get("agentic_ssh"));
 
     let Some(server) = server.and_then(|v| v.as_object()) else {
         dc.fail(&format!(
@@ -318,7 +320,9 @@ fn doctor_check_prompt(dc: &mut DoctorCounters, home: &Path) {
         if has_rules {
             dc.pass("GEMINI.md contains agentic_ssh rules");
         } else {
-            dc.fail("GEMINI.md missing agentic_ssh rules — run `agentic_ssh install --agent gemini`");
+            dc.fail(
+                "GEMINI.md missing agentic_ssh rules — run `agentic_ssh install --agent gemini`",
+            );
         }
     } else {
         dc.warn("~/.gemini/GEMINI.md does not exist");

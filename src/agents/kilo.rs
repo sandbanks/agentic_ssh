@@ -12,8 +12,8 @@ use serde_json::json;
 use crate::errors::Result;
 
 use super::{
-    backup_and_write_json, backup_config_file, load_jsonc_file, load_jsonc_file_strict,
-    safe_write_json_file, AgentIntegration, DoctorCounters, HealthcheckContext, InstallContext,
+    AgentIntegration, DoctorCounters, HealthcheckContext, InstallContext, backup_and_write_json,
+    backup_config_file, load_jsonc_file, load_jsonc_file_strict, safe_write_json_file,
 };
 
 /// Kilo CLI agent.
@@ -122,7 +122,8 @@ fn uninstall_mcp_server(config_path: &Path) {
         let Some(servers) = settings.get_mut("mcp").and_then(|v| v.as_object_mut()) else {
             return;
         };
-        if servers.remove("agentic_ssh").is_some() && backup_and_write_json(config_path, &settings) {
+        if servers.remove("agentic_ssh").is_some() && backup_and_write_json(config_path, &settings)
+        {
             eprintln!(
                 "\x1b[32m✔\x1b[0m Removed agentic_ssh MCP server from {}",
                 config_path.display()

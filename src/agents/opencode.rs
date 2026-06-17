@@ -11,12 +11,12 @@ use std::path::Path;
 
 use serde_json::json;
 
-use crate::errors::{Result, AgenticSshError};
+use crate::errors::{AgenticSshError, Result};
 
 use super::{
+    AgentIntegration, DoctorCounters, HealthcheckContext, InstallContext, InstallScope,
     backup_and_write_json, backup_config_file, load_json_file, load_json_file_strict,
-    safe_write_json_file, AgentIntegration, DoctorCounters, HealthcheckContext, InstallContext,
-    InstallScope,
+    safe_write_json_file,
 };
 
 /// `OpenCode` agent.
@@ -354,7 +354,9 @@ fn doctor_check_prompt(dc: &mut DoctorCounters, home: &Path) {
         if has_rules {
             dc.pass("AGENTS.md contains agentic_ssh rules");
         } else {
-            dc.fail("AGENTS.md missing agentic_ssh rules — run `agentic_ssh install --agent opencode`");
+            dc.fail(
+                "AGENTS.md missing agentic_ssh rules — run `agentic_ssh install --agent opencode`",
+            );
         }
     } else {
         dc.warn("AGENTS.md does not exist");

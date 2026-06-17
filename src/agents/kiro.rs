@@ -16,12 +16,12 @@ use std::path::{Path, PathBuf};
 
 use serde_json::json;
 
-use crate::errors::{Result, AgenticSshError};
+use crate::errors::{AgenticSshError, Result};
 
 use super::{
+    AgentIntegration, DoctorCounters, HealthcheckContext, InstallContext, InstallScope,
     backup_and_write_json, backup_config_file, load_json_file, load_json_file_strict,
-    safe_write_json_file, AgentIntegration, DoctorCounters, HealthcheckContext, InstallContext,
-    InstallScope,
+    safe_write_json_file,
 };
 
 /// Kiro agent.
@@ -490,11 +490,17 @@ fn uninstall_mcp_server(path: &Path) {
         return;
     };
     let Some(servers) = config.get_mut("mcpServers").and_then(|v| v.as_object_mut()) else {
-        eprintln!("  No agentic_ssh MCP server in {}, skipping", path.display());
+        eprintln!(
+            "  No agentic_ssh MCP server in {}, skipping",
+            path.display()
+        );
         return;
     };
     if servers.remove("agentic_ssh").is_none() {
-        eprintln!("  No agentic_ssh MCP server in {}, skipping", path.display());
+        eprintln!(
+            "  No agentic_ssh MCP server in {}, skipping",
+            path.display()
+        );
         return;
     }
     if servers.is_empty() {

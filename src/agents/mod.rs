@@ -27,7 +27,7 @@ use std::path::{Path, PathBuf};
 
 use clap::ValueEnum;
 
-use crate::errors::{Result, AgenticSshError};
+use crate::errors::{AgenticSshError, Result};
 
 pub use antigravity::AntigravityIntegration;
 pub use claude::ClaudeIntegration;
@@ -496,15 +496,14 @@ pub fn backup_and_write_json(path: &Path, value: &serde_json::Value) -> bool {
 /// embedded in JSON hook commands without backslash-escaping issues.
 pub fn which_agentic_ssh() -> Option<String> {
     // Check the current executable first
-    if let Ok(exe) = std::env::current_exe() {
-        if exe
+    if let Ok(exe) = std::env::current_exe()
+        && exe
             .file_name()
             .and_then(|n| n.to_str())
             .is_some_and(|n| n.starts_with("agentic_ssh"))
         {
             return Some(normalize_path_separators(&exe.to_string_lossy()));
         }
-    }
     // Fall back to PATH lookup
     let path_var = std::env::var("PATH").ok()?;
     let separator = if cfg!(windows) { ';' } else { ':' };
@@ -745,8 +744,6 @@ pub fn detect_missing_installed_agents(home: &Path, current: &[String]) -> Vec<S
     }
     additions
 }
-
-
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
@@ -1183,8 +1180,8 @@ fn parse_gitconfig_value(path: &Path, section: &str, key: &str) -> Option<String
             continue;
         }
         // Parse key = value
-        if let Some((k, v)) = trimmed.split_once('=') {
-            if k.trim().to_ascii_lowercase() == key_lower {
+        if let Some((k, v)) = trimmed.split_once('=')
+            && k.trim().to_ascii_lowercase() == key_lower {
                 let v = v.trim();
                 // Strip surrounding quotes if present.
                 let v = v
@@ -1193,7 +1190,6 @@ fn parse_gitconfig_value(path: &Path, section: &str, key: &str) -> Option<String
                     .unwrap_or(v);
                 return Some(v.to_string());
             }
-        }
     }
     None
 }
@@ -1507,8 +1503,8 @@ mod git_hook_tests {
             if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with(';') {
                 continue;
             }
-            if let Some((k, v)) = trimmed.split_once('=') {
-                if k.trim().to_ascii_lowercase() == key_lower {
+            if let Some((k, v)) = trimmed.split_once('=')
+                && k.trim().to_ascii_lowercase() == key_lower {
                     let v = v.trim();
                     let v = v
                         .strip_prefix('"')
@@ -1516,7 +1512,6 @@ mod git_hook_tests {
                         .unwrap_or(v);
                     return Some(v.to_string());
                 }
-            }
         }
         None
     }

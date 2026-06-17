@@ -16,8 +16,8 @@ use serde_json::json;
 use crate::errors::Result;
 
 use super::{
-    backup_and_write_json, backup_config_file, load_json_file, load_json_file_strict,
-    safe_write_json_file, AgentIntegration, DoctorCounters, HealthcheckContext, InstallContext,
+    AgentIntegration, DoctorCounters, HealthcheckContext, InstallContext, backup_and_write_json,
+    backup_config_file, load_json_file, load_json_file_strict, safe_write_json_file,
 };
 
 /// Pi coding agent.
@@ -28,11 +28,10 @@ pub struct PiIntegration;
 /// Honors `$PI_CODING_AGENT_DIR` when set (`$PI_CODING_AGENT_DIR/mcp.json`),
 /// otherwise falls back to `<home>/.pi/agent/mcp.json`.
 fn pi_config_path(home: &Path) -> PathBuf {
-    if let Ok(dir) = std::env::var("PI_CODING_AGENT_DIR") {
-        if !dir.trim().is_empty() {
+    if let Ok(dir) = std::env::var("PI_CODING_AGENT_DIR")
+        && !dir.trim().is_empty() {
             return PathBuf::from(dir).join("mcp.json");
         }
-    }
     home.join(".pi/agent/mcp.json")
 }
 
@@ -188,7 +187,9 @@ fn doctor_check_settings(dc: &mut DoctorCounters, home: &Path) {
     }
 
     let settings = load_json_file(&mcp_path);
-    let server = settings.get("mcpServers").and_then(|v| v.get("agentic_ssh"));
+    let server = settings
+        .get("mcpServers")
+        .and_then(|v| v.get("agentic_ssh"));
 
     if server.and_then(|v| v.as_object()).is_some() {
         dc.pass(&format!("MCP server registered in {}", mcp_path.display()));

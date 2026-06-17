@@ -11,9 +11,9 @@ use serde_json::json;
 use crate::errors::Result;
 
 use super::{
-    backup_and_write_json, backup_config_file, load_json_file, load_json_file_strict,
-    load_jsonc_file, load_jsonc_file_strict, safe_write_json_file, AgentIntegration,
-    DoctorCounters, HealthcheckContext, InstallContext,
+    AgentIntegration, DoctorCounters, HealthcheckContext, InstallContext, backup_and_write_json,
+    backup_config_file, load_json_file, load_json_file_strict, load_jsonc_file,
+    load_jsonc_file_strict, safe_write_json_file,
 };
 
 /// GitHub Copilot agent.
@@ -468,7 +468,9 @@ fn doctor_check_cli_settings(dc: &mut DoctorCounters, home: &Path) {
     }
 
     let settings = load_json_file(&settings_path);
-    let server = settings.get("mcpServers").and_then(|v| v.get("agentic_ssh"));
+    let server = settings
+        .get("mcpServers")
+        .and_then(|v| v.get("agentic_ssh"));
 
     let Some(server) = server.and_then(|v| v.as_object()) else {
         dc.fail(&format!(

@@ -10,8 +10,8 @@ use serde_json::json;
 use crate::errors::Result;
 
 use super::{
-    backup_and_write_json, backup_config_file, load_json_file, load_json_file_strict,
-    safe_write_json_file, AgentIntegration, DoctorCounters, HealthcheckContext, InstallContext,
+    AgentIntegration, DoctorCounters, HealthcheckContext, InstallContext, backup_and_write_json,
+    backup_config_file, load_json_file, load_json_file_strict, safe_write_json_file,
 };
 
 /// Cline agent.
@@ -174,7 +174,9 @@ fn doctor_check_settings(dc: &mut DoctorCounters, home: &Path) {
     }
 
     let settings = load_json_file(&settings_path);
-    let server = settings.get("mcpServers").and_then(|v| v.get("agentic_ssh"));
+    let server = settings
+        .get("mcpServers")
+        .and_then(|v| v.get("agentic_ssh"));
 
     if server.and_then(|v| v.as_object()).is_some() {
         dc.pass(&format!(

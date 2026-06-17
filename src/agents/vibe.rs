@@ -7,7 +7,7 @@
 use std::io::Write;
 use std::path::Path;
 
-use crate::errors::{Result, AgenticSshError};
+use crate::errors::{AgenticSshError, Result};
 
 use super::{AgentIntegration, DoctorCounters, HealthcheckContext, InstallContext};
 
@@ -354,7 +354,9 @@ fn doctor_check_prompt(dc: &mut DoctorCounters, home: &Path) {
         if has_rules {
             dc.pass("Vibe prompt contains agentic_ssh rules");
         } else {
-            dc.fail("Vibe prompt missing agentic_ssh rules — run `agentic_ssh install --agent vibe`");
+            dc.fail(
+                "Vibe prompt missing agentic_ssh rules — run `agentic_ssh install --agent vibe`",
+            );
         }
     } else {
         dc.warn("Vibe prompt does not exist");

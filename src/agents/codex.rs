@@ -8,11 +8,11 @@
 use std::io::Write;
 use std::path::Path;
 
-use crate::errors::{Result, AgenticSshError};
+use crate::errors::{AgenticSshError, Result};
 
 use super::{
-    load_toml_file, tool_names, write_toml_file, AgentIntegration, DoctorCounters,
-    HealthcheckContext, InstallContext,
+    AgentIntegration, DoctorCounters, HealthcheckContext, InstallContext, load_toml_file,
+    tool_names, write_toml_file,
 };
 
 /// `OpenAI` Codex CLI agent.
@@ -349,7 +349,9 @@ fn doctor_check_prompt(dc: &mut DoctorCounters, codex_dir: &Path) {
         if has_rules {
             dc.pass("AGENTS.md contains agentic_ssh rules");
         } else {
-            dc.fail("AGENTS.md missing agentic_ssh rules — run `agentic_ssh install --agent codex`");
+            dc.fail(
+                "AGENTS.md missing agentic_ssh rules — run `agentic_ssh install --agent codex`",
+            );
         }
     } else {
         dc.warn("~/.codex/AGENTS.md does not exist");

@@ -10,11 +10,11 @@
 use std::io::Write;
 use std::path::Path;
 
-use crate::errors::{Result, AgenticSshError};
+use crate::errors::{AgenticSshError, Result};
 
 use super::{
-    load_toml_file, write_toml_file, AgentIntegration, DoctorCounters, HealthcheckContext,
-    InstallContext,
+    AgentIntegration, DoctorCounters, HealthcheckContext, InstallContext, load_toml_file,
+    write_toml_file,
 };
 
 /// Grok Build agent.
@@ -41,7 +41,9 @@ impl AgentIntegration for GrokIntegration {
 
         eprintln!();
         eprintln!("Setup complete. Next steps:");
-        eprintln!("  1. Start a new Grok Build session — agentic_ssh tools are now available via search_tool + use_tool");
+        eprintln!(
+            "  1. Start a new Grok Build session — agentic_ssh tools are now available via search_tool + use_tool"
+        );
         Ok(())
     }
 
@@ -318,11 +320,10 @@ fn doctor_check_config(dc: &mut DoctorCounters, config_path: &Path) {
         .and_then(|v| v.as_table());
 
     if let Some(s) = server {
-        if let Some(cmd) = s.get("command").and_then(|v| v.as_str()) {
-            if !cmd.is_empty() {
+        if let Some(cmd) = s.get("command").and_then(|v| v.as_str())
+            && !cmd.is_empty() {
                 dc.pass(&format!("MCP server command present: {cmd}"));
             }
-        }
         let has_serve = s
             .get("args")
             .and_then(|v| v.as_array())

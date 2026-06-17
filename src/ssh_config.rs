@@ -1,9 +1,9 @@
-use std::fs::File;
-use std::io::{BufRead, BufReader};
-use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use glob::glob;
 use ssh2_config_rs::SshConfig;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use std::path::{Path, PathBuf};
 
 pub fn expand_path(path: &Path) -> PathBuf {
     let path_str = path.to_string_lossy();
@@ -15,7 +15,11 @@ pub fn expand_path(path: &Path) -> PathBuf {
 
 /// Recursively parses SSH config files starting from a base path to find all explicit host names/aliases.
 /// Respects `Include` directives.
-fn find_hosts_in_file(path: &Path, ssh_dir: &Path, visited: &mut Vec<PathBuf>) -> Result<Vec<String>> {
+fn find_hosts_in_file(
+    path: &Path,
+    ssh_dir: &Path,
+    visited: &mut Vec<PathBuf>,
+) -> Result<Vec<String>> {
     let path = expand_path(path);
     let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
     if visited.contains(&canonical) {
@@ -27,8 +31,8 @@ fn find_hosts_in_file(path: &Path, ssh_dir: &Path, visited: &mut Vec<PathBuf>) -
         return Ok(Vec::new());
     }
 
-    let file = File::open(&path)
-        .with_context(|| format!("Failed to open SSH config file: {:?}", path))?;
+    let file =
+        File::open(&path).with_context(|| format!("Failed to open SSH config file: {:?}", path))?;
     let reader = BufReader::new(file);
     let mut hosts = Vec::new();
 
@@ -43,7 +47,9 @@ fn find_hosts_in_file(path: &Path, ssh_dir: &Path, visited: &mut Vec<PathBuf>) -
         }
 
         // SSH config is case-insensitive, split by whitespace or '='
-        let parts: Vec<&str> = trimmed.splitn(2, |c: char| c.is_whitespace() || c == '=').collect();
+        let parts: Vec<&str> = trimmed
+            .splitn(2, |c: char| c.is_whitespace() || c == '=')
+            .collect();
         if parts.len() < 2 {
             continue;
         }
@@ -54,7 +60,8 @@ fn find_hosts_in_file(path: &Path, ssh_dir: &Path, visited: &mut Vec<PathBuf>) -
             // Split multiple host patterns on the same line
             for host_pattern in val.split_whitespace() {
                 // Ignore wildcard patterns like '*' or '?'-based filters
-                if !host_pattern.contains('*') && !host_pattern.contains('?') && host_pattern != "!" {
+                if !host_pattern.contains('*') && !host_pattern.contains('?') && host_pattern != "!"
+                {
                     hosts.push(host_pattern.to_string());
                 }
             }
@@ -91,7 +98,7 @@ pub fn list_ssh_hosts() -> Result<Vec<String>> {
 
     let mut visited = Vec::new();
     let mut hosts = find_hosts_in_file(&main_config, &ssh_dir, &mut visited)?;
-    
+
     hosts.sort();
     hosts.dedup();
     Ok(hosts)
@@ -168,4 +175,3 @@ mod tests {
         Ok(())
     }
 }
-

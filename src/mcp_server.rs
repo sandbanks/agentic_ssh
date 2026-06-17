@@ -417,7 +417,9 @@ impl McpServer {
                     let config = crate::ssh_pool::load_config();
                     for custom in config.custom_tools {
                         // Remove native tool with same name to enforce custom precedence/override
-                        tools_arr.retain(|t| t.get("name").and_then(|n| n.as_str()) != Some(&custom.name));
+                        tools_arr.retain(|t| {
+                            t.get("name").and_then(|n| n.as_str()) != Some(&custom.name)
+                        });
 
                         tools_arr.push(serde_json::json!({
                             "name": custom.name,
@@ -521,9 +523,15 @@ impl McpServer {
                     let cmd_to_run = cmd_to_run.clone();
                     let name = name.clone();
                     async move {
-                        let (stdout, stderr, exit_code) = pool.execute_command(&host, &cmd_to_run).await?;
+                        let (stdout, stderr, exit_code) =
+                            pool.execute_command(&host, &cmd_to_run).await?;
                         if exit_code != 0 {
-                            anyhow::bail!("Error executing custom tool '{}' (exit code {}):\n{}", name, exit_code, stderr);
+                            anyhow::bail!(
+                                "Error executing custom tool '{}' (exit code {}):\n{}",
+                                name,
+                                exit_code,
+                                stderr
+                            );
                         }
                         Ok(serde_json::json!(stdout))
                     }
@@ -602,9 +610,14 @@ impl McpServer {
                         let pool = pool.clone();
                         async move {
                             let cmd = "echo '=== LOAD ===' && (cat /proc/loadavg 2>/dev/null || uptime) && echo '=== MEM ===' && (cat /proc/meminfo 2>/dev/null || free -k 2>/dev/null) && echo '=== DISK ===' && df -kP /";
-                            let (stdout, stderr, exit_code) = pool.execute_command(&host, cmd).await?;
+                            let (stdout, stderr, exit_code) =
+                                pool.execute_command(&host, cmd).await?;
                             if exit_code != 0 {
-                                anyhow::bail!("Error executing stats command (exit code {}):\n{}", exit_code, stderr);
+                                anyhow::bail!(
+                                    "Error executing stats command (exit code {}):\n{}",
+                                    exit_code,
+                                    stderr
+                                );
                             }
                             let stats = parse_system_stats(&stdout);
                             Ok(serde_json::to_value(&stats)?)
@@ -649,9 +662,14 @@ impl McpServer {
                         let pool = pool.clone();
                         async move {
                             let cmd = "ss -tulpn 2>/dev/null || ss -tuln 2>/dev/null || netstat -tulpn 2>/dev/null || netstat -tuln 2>/dev/null";
-                            let (stdout, stderr, exit_code) = pool.execute_command(&host, cmd).await?;
+                            let (stdout, stderr, exit_code) =
+                                pool.execute_command(&host, cmd).await?;
                             if exit_code != 0 {
-                                anyhow::bail!("Error executing ports command (exit code {}):\n{}", exit_code, stderr);
+                                anyhow::bail!(
+                                    "Error executing ports command (exit code {}):\n{}",
+                                    exit_code,
+                                    stderr
+                                );
                             }
                             let ports = parse_listening_ports(&stdout, filter_port);
                             Ok(serde_json::to_value(&ports)?)
@@ -708,7 +726,8 @@ impl McpServer {
                         let pool = pool.clone();
                         let command = command.clone();
                         async move {
-                            let (stdout, stderr, exit_code) = pool.execute_command(&host, &command).await?;
+                            let (stdout, stderr, exit_code) =
+                                pool.execute_command(&host, &command).await?;
                             let stdout_final = if abbreviate {
                                 abbreviate_output(&stdout, max_lines)
                             } else {
@@ -773,9 +792,15 @@ impl McpServer {
                         let re = re.clone();
                         async move {
                             // POSIX-standard process listing
-                            let (stdout, stderr, exit_code) = pool.execute_command(&host, "ps -eo pid,user,%cpu,%mem,args").await?;
+                            let (stdout, stderr, exit_code) = pool
+                                .execute_command(&host, "ps -eo pid,user,%cpu,%mem,args")
+                                .await?;
                             if exit_code != 0 {
-                                anyhow::bail!("Error running ps command (exit code {}):\n{}", exit_code, stderr);
+                                anyhow::bail!(
+                                    "Error running ps command (exit code {}):\n{}",
+                                    exit_code,
+                                    stderr
+                                );
                             }
 
                             let mut results = Vec::new();
@@ -869,9 +894,14 @@ impl McpServer {
                         let file_path = file_path.clone();
                         async move {
                             let command = format!("tail -n {} {}", lines, file_path);
-                            let (stdout, stderr, exit_code) = pool.execute_command(&host, &command).await?;
+                            let (stdout, stderr, exit_code) =
+                                pool.execute_command(&host, &command).await?;
                             if exit_code != 0 {
-                                anyhow::bail!("Error tailing file (exit code {}):\n{}", exit_code, stderr);
+                                anyhow::bail!(
+                                    "Error tailing file (exit code {}):\n{}",
+                                    exit_code,
+                                    stderr
+                                );
                             }
                             Ok(serde_json::json!(stdout))
                         }
@@ -927,10 +957,16 @@ impl McpServer {
                         let container = container.clone();
                         async move {
                             let ts_flag = if timestamps { "-t" } else { "" };
-                            let command = format!("docker logs --tail {} {} {}", lines, ts_flag, container);
-                            let (stdout, stderr, exit_code) = pool.execute_command(&host, &command).await?;
+                            let command =
+                                format!("docker logs --tail {} {} {}", lines, ts_flag, container);
+                            let (stdout, stderr, exit_code) =
+                                pool.execute_command(&host, &command).await?;
                             if exit_code != 0 {
-                                anyhow::bail!("Error fetching container logs (exit code {}):\n{}", exit_code, stderr);
+                                anyhow::bail!(
+                                    "Error fetching container logs (exit code {}):\n{}",
+                                    exit_code,
+                                    stderr
+                                );
                             }
                             let text = if stdout.is_empty() && !stderr.is_empty() {
                                 stderr
@@ -968,8 +1004,14 @@ impl McpServer {
             }
             "wait_for_log_pattern" => {
                 let (hosts, is_multi) = parse_hosts(&arguments)?;
-                let file_path = arguments.get("file_path").and_then(|v| v.as_str()).map(|s| s.to_string());
-                let container = arguments.get("container").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let file_path = arguments
+                    .get("file_path")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let container = arguments
+                    .get("container")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
 
                 if file_path.is_none() && container.is_none() {
                     return Err(anyhow::anyhow!(
@@ -1049,11 +1091,15 @@ impl McpServer {
                                         stdout_buf.extend_from_slice(&data);
 
                                         let mut found = false;
-                                        while let Some(pos) = stdout_buf.iter().position(|&b| b == b'\n') {
-                                            let line_bytes: Vec<u8> = stdout_buf.drain(..=pos).collect();
-                                            let line_str =
-                                                String::from_utf8_lossy(&line_bytes[..line_bytes.len() - 1])
-                                                    .into_owned();
+                                        while let Some(pos) =
+                                            stdout_buf.iter().position(|&b| b == b'\n')
+                                        {
+                                            let line_bytes: Vec<u8> =
+                                                stdout_buf.drain(..=pos).collect();
+                                            let line_str = String::from_utf8_lossy(
+                                                &line_bytes[..line_bytes.len() - 1],
+                                            )
+                                            .into_owned();
                                             if re.is_match(&line_str) {
                                                 matched_line = Some(line_str);
                                                 found = true;
@@ -1069,8 +1115,11 @@ impl McpServer {
                                             stdout_buf.extend_from_slice(&data);
 
                                             let mut found = false;
-                                            while let Some(pos) = stdout_buf.iter().position(|&b| b == b'\n') {
-                                                let line_bytes: Vec<u8> = stdout_buf.drain(..=pos).collect();
+                                            while let Some(pos) =
+                                                stdout_buf.iter().position(|&b| b == b'\n')
+                                            {
+                                                let line_bytes: Vec<u8> =
+                                                    stdout_buf.drain(..=pos).collect();
                                                 let line_str = String::from_utf8_lossy(
                                                     &line_bytes[..line_bytes.len() - 1],
                                                 )
@@ -1088,8 +1137,10 @@ impl McpServer {
                                     }
                                     Ok(Some(russh::ChannelMsg::ExitStatus { exit_status })) => {
                                         if exit_status != 0 {
-                                            error_msg =
-                                                Some(format!("Command exited with status {}", exit_status));
+                                            error_msg = Some(format!(
+                                                "Command exited with status {}",
+                                                exit_status
+                                            ));
                                         }
                                         break;
                                     }
@@ -1103,7 +1154,10 @@ impl McpServer {
                                 }
                             }
 
-                            if matched_line.is_none() && error_msg.is_none() && !stdout_buf.is_empty() {
+                            if matched_line.is_none()
+                                && error_msg.is_none()
+                                && !stdout_buf.is_empty()
+                            {
                                 let line_str = String::from_utf8_lossy(&stdout_buf).into_owned();
                                 if re.is_match(&line_str) {
                                     matched_line = Some(line_str);
@@ -1125,7 +1179,8 @@ impl McpServer {
                 };
 
                 if is_multi {
-                    let results = execute_on_hosts(hosts, timeout_secs + 5, run_wait_pattern).await?;
+                    let results =
+                        execute_on_hosts(hosts, timeout_secs + 5, run_wait_pattern).await?;
                     let text = serde_json::to_string_pretty(&results)?;
                     Ok(serde_json::json!({
                         "content": [{ "type": "text", "text": text }],
@@ -1144,15 +1199,13 @@ impl McpServer {
                                 "isError": false
                             }))
                         }
-                        Err(e) => {
-                            Ok(serde_json::json!({
-                                "content": [{
-                                    "type": "text",
-                                    "text": format!("{:#}", e)
-                                }],
-                                "isError": true
-                            }))
-                        }
+                        Err(e) => Ok(serde_json::json!({
+                            "content": [{
+                                "type": "text",
+                                "text": format!("{:#}", e)
+                            }],
+                            "isError": true
+                        })),
                     }
                 }
             }
@@ -1458,7 +1511,9 @@ pub fn parse_hosts(arguments: &serde_json::Value) -> anyhow::Result<(Vec<String>
     } else if let Some(host_val) = arguments.get("host").and_then(|v| v.as_str()) {
         Ok((vec![host_val.to_string()], false))
     } else {
-        anyhow::bail!("Missing target host(s): specify either 'host' (string) or 'hosts' (array of strings)");
+        anyhow::bail!(
+            "Missing target host(s): specify either 'host' (string) or 'hosts' (array of strings)"
+        );
     }
 }
 
@@ -1666,9 +1721,7 @@ udp   UNCONN 0      0            0.0.0.0:53          0.0.0.0:*     users:((\"nam
     #[tokio::test]
     async fn test_execute_on_hosts_helper() {
         let hosts = vec!["host1".to_string(), "host2".to_string()];
-        let run_fn = |_host: String| async {
-            Ok(serde_json::json!("hello"))
-        };
+        let run_fn = |_host: String| async { Ok(serde_json::json!("hello")) };
 
         let result = execute_on_hosts(hosts, 5, run_fn).await.unwrap();
         let map = result.as_object().unwrap();
@@ -1679,4 +1732,3 @@ udp   UNCONN 0      0            0.0.0.0:53          0.0.0.0:*     users:((\"nam
         assert_eq!(map.get("host2").unwrap().get("data").unwrap(), "hello");
     }
 }
-
