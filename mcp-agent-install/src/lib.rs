@@ -27,6 +27,8 @@ use std::path::{Path, PathBuf};
 
 use clap::ValueEnum;
 
+pub mod errors;
+
 use crate::errors::{AgenticSshError, Result};
 
 pub use antigravity::AntigravityIntegration;

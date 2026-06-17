@@ -4,8 +4,7 @@ use std::time::Duration;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
-mod agents;
-mod errors;
+use mcp_agent_install as agents;
 mod mcp_server;
 mod ssh_config;
 mod ssh_pool;
