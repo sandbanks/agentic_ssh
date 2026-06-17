@@ -10,7 +10,7 @@ ssh2-config-rs = "0.7"
 anyhow = "1"
 mimalloc = "0.1"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 glob = "0.3"
 home = "0.5"
 async-trait = "0.1"
