@@ -20,7 +20,7 @@ It also supports output abbreviation, which helps save tokens by truncating extr
 ## Quick Start
 ```bash
 # Install
-cargo install --git https://github.com/sandbanks/agentic_ssh
+cargo install agentic_ssh
 
 # Auto-configure for your agent(s)
 agentic_ssh install
@@ -35,8 +35,14 @@ agentic_ssh install
 
 Ensure you have Rust and Cargo installed (or use the Nix environment).
 
+### Install via Cargo (Recommended)
+You can install `agentic_ssh` directly from crates.io:
+```bash
+cargo install agentic_ssh
+```
+
 ### Install via Git
-You can install `agentic_ssh` directly from the GitHub repository:
+You can also install `agentic_ssh` directly from the GitHub repository:
 ```bash
 cargo install --git https://github.com/sandbanks/agentic_ssh
 ```
