@@ -19,7 +19,10 @@ It also supports output abbreviation, which helps save tokens by truncating extr
 
 ## Quick Start
 ```bash
-# Install
+# Install (recommended: pre-compiled binary via cargo-binstall)
+cargo binstall agentic_ssh
+
+# Or compile from source via cargo
 cargo install agentic_ssh
 
 # Auto-configure for your agent(s)
@@ -35,8 +38,14 @@ agentic_ssh install
 
 Ensure you have Rust and Cargo installed (or use the Nix environment).
 
-### Install via Cargo (Recommended)
-You can install `agentic_ssh` directly from crates.io:
+### Install via Cargo Binstall (Recommended)
+You can install the pre-compiled binary for `agentic_ssh` using [cargo-binstall](https://github.com/cargo-bins/cargo-binstall):
+```bash
+cargo binstall agentic_ssh
+```
+
+### Install via Cargo (Compile from Source)
+You can also compile and install `agentic_ssh` directly from crates.io:
 ```bash
 cargo install agentic_ssh
 ```
