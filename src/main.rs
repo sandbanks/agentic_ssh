@@ -5,6 +5,7 @@ use std::time::Duration;
 static GLOBAL: MiMalloc = MiMalloc;
 
 use mcp_agent_install as agents;
+mod doctor;
 mod mcp_server;
 mod ssh_config;
 mod ssh_pool;
@@ -90,6 +91,12 @@ enum Commands {
         /// Uninstall the MCP server only in the local project folder
         #[arg(long)]
         local: bool,
+    },
+    /// Run diagnostic checks on the system and agent configurations
+    Doctor {
+        /// Agent to check (auto-detects if omitted)
+        #[arg(long, value_enum)]
+        agent: Option<AgentOption>,
     },
 }
 
@@ -269,6 +276,10 @@ async fn main() -> anyhow::Result<()> {
                     );
                 }
             }
+        }
+        Some(Commands::Doctor { agent }) => {
+            let agent_str = agent.map(|a| a.to_str());
+            doctor::run_doctor(agent_str).await;
         }
         Some(Commands::Serve) | None => {
             // We maintain a pool of open SSH connections, closing them after 5 minutes (300 seconds) of inactivity.
