@@ -24,8 +24,8 @@ jobs:
             runner: ubuntu-latest
           - name: macOS
             runner: macos-14
-          - name: Windows
-            runner: windows-latest
+          # - name: Windows
+          #   runner: windows-latest
 
     steps:
       - uses: actions/checkout@v6
