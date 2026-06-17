@@ -3,9 +3,9 @@
 //!
 //! Checks the binary, SSH client, SSH config, pool daemon status, and agent integrations.
 
+use crate::agents::{self, DoctorCounters, HealthcheckContext};
 use crate::ssh_config;
 use crate::ssh_pool;
-use crate::agents::{self, DoctorCounters, HealthcheckContext};
 use std::path::PathBuf;
 
 /// Runs a comprehensive health check of the agentic_ssh installation.
