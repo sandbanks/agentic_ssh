@@ -127,8 +127,12 @@ fn install_prompt_rules(agents_md: &Path) -> Result<()> {
         String::new()
     };
     if existing.contains(marker) {
-        eprintln!("  AGENTS.md already contains agentic_ssh rules, skipping");
-        return Ok(());
+        if existing.contains("agentic_ssh_context") || existing.contains("knowledge graph") {
+            uninstall_prompt_rules(agents_md);
+        } else {
+            eprintln!("  AGENTS.md already contains agentic_ssh rules, skipping");
+            return Ok(());
+        }
     }
     let mut f = std::fs::OpenOptions::new()
         .create(true)
@@ -140,20 +144,14 @@ fn install_prompt_rules(agents_md: &Path) -> Result<()> {
     write!(
         f,
         "\n{marker}\n\n\
-        Before reading source files or scanning the codebase, use the agentic_ssh MCP tools \
-        (`agentic_ssh_context`, `agentic_ssh_search`, `agentic_ssh_callers`, `agentic_ssh_callees`, \
-        `agentic_ssh_impact`, `agentic_ssh_node`, `agentic_ssh_files`, `agentic_ssh_affected`). \
-        They provide instant semantic results from a pre-built knowledge graph and are \
-        faster than file reads.\n\n\
-        If a code analysis question cannot be fully answered by agentic_ssh MCP tools, \
-        try querying the SQLite database directly at `.agentic_ssh/agentic_ssh.db` \
-        (tables: `nodes`, `edges`, `files`). Use SQL to answer complex structural queries \
-        that go beyond what the built-in tools expose.\n\n\
-        If you discover a gap where an extractor, schema, or agentic_ssh tool could be \
-        improved to answer a question natively, propose to the user that they open an issue \
-        at https://github.com/aovestdipaperino/agentic_ssh describing the limitation. \
-        **Remind the user to strip any sensitive or proprietary code from the bug description \
-        before submitting.**\n"
+        When you need to discover, query, monitor, or execute commands on remote SSH hosts, \
+        ALWAYS use the `agentic_ssh` MCP tools:\n\
+        - **Discovering Hosts:** Use the `list_hosts` tool to retrieve the list of configured remote SSH hosts. Do NOT read or parse `~/.ssh/config` manually.\n\
+        - **Executing Commands:** Use the `run_command` tool to run shell commands on one or more hosts concurrently.\n\
+        - **Monitoring Logs:** Use `tail_log` (for files) or `tail_container_logs` (for Docker containers) to read recent logs. To verify startup, services, or events across cluster nodes without polling, use `wait_for_log_pattern` to block and stream logs until a regex pattern is matched.\n\
+        - **Checking System & Network Status:** Use `get_system_stats` to fetch structured CPU, memory, and disk usage metrics. Use `list_ports` to see active listening TCP/UDP ports. Use `search_processes` to find running processes.\n\
+        - **Custom Tools:** Use custom commands registered dynamically through the configuration file (e.g., `find_large_files`, `check_service_status`, `check_docker_status`).\n\n\
+        These tools leverage an automatic connection pool (reusing active sessions and closing them after 5 minutes of inactivity), handle SSH key-based authentication seamlessly, and support output abbreviation to prevent token bloat.\n"
     )
     .ok();
     eprintln!(

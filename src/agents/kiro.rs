@@ -410,14 +410,17 @@ fn install_steering_rules(path: &Path) -> Result<()> {
         String::new()
     };
     if existing.contains(PROMPT_MARKER) {
-        if existing.contains(PROMPT_END_MARKER) {
+        if existing.contains("agentic_ssh_context") || existing.contains("knowledge graph") {
+            remove_steering_rules(path);
+        } else if existing.contains(PROMPT_END_MARKER) {
             eprintln!("  Kiro steering already contains agentic_ssh rules, skipping");
             return Ok(());
+        } else {
+            eprintln!(
+                "  Kiro steering contains agentic_ssh rules without an owned end marker, leaving unchanged"
+            );
+            return Ok(());
         }
-        eprintln!(
-            "  Kiro steering contains agentic_ssh rules without an owned end marker, leaving unchanged"
-        );
-        return Ok(());
     }
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| AgenticSshError::Config {
@@ -456,22 +459,18 @@ fn prompt_rules_text() -> String {
 
 fn prompt_rules_text_without_end_marker() -> &'static str {
     "## Prefer agentic_ssh MCP tools\n\n\
-Before reading source files or scanning the codebase, use the agentic_ssh MCP tools \
-(`agentic_ssh_context`, `agentic_ssh_search`, `agentic_ssh_callers`, `agentic_ssh_callees`, \
-`agentic_ssh_impact`, `agentic_ssh_node`, `agentic_ssh_files`, `agentic_ssh_affected`). \
-They provide semantic results from a pre-built local knowledge graph and are faster \
-than broad file reads.\n\n\
-Do not use Kiro's `delegate` tool for codebase exploration, architecture mapping, \
-call graph work, symbol lookup, or other code research until agentic_ssh MCP tools \
-have been tried. Delegation is still appropriate for long-running execution work \
-such as builds, tests, generated reports, or independent implementation tasks.\n\n\
-If a code analysis question cannot be fully answered by agentic_ssh MCP tools, try \
-querying the SQLite database directly at `.agentic_ssh/agentic_ssh.db` (tables: `nodes`, \
-`edges`, `files`). Use SQL for structural queries that go beyond the MCP tools.\n\n\
-If you discover a gap where an extractor, schema, or agentic_ssh tool could answer a \
-question natively, propose opening an issue at \
-https://github.com/aovestdipaperino/agentic_ssh. Remind the user to strip sensitive \
-or proprietary code from the bug description before submitting."
+When you need to discover, query, monitor, or execute commands on remote SSH hosts, \
+ALWAYS use the `agentic_ssh` MCP tools:\n\
+- **Discovering Hosts:** Use the `list_hosts` tool to retrieve the list of configured remote SSH hosts. Do NOT read or parse `~/.ssh/config` manually.\n\
+- **Executing Commands:** Use the `run_command` tool to run shell commands on one or more hosts concurrently.\n\
+- **Monitoring Logs:** Use `tail_log` (for files) or `tail_container_logs` (for Docker containers) to read recent logs. To verify startup, services, or events across cluster nodes without polling, use `wait_for_log_pattern` to block and stream logs until a regex pattern is matched.\n\
+- **Checking System & Network Status:** Use `get_system_stats` to fetch structured CPU, memory, and disk usage metrics. Use `list_ports` to see active listening TCP/UDP ports. Use `search_processes` to find running processes.\n\
+- **Custom Tools:** Use custom commands registered dynamically through the configuration file (e.g., `find_large_files`, `check_service_status`, `check_docker_status`).\n\n\
+Do not use Kiro's `delegate` tool for remote host commands, log monitoring, port scanning, or system checks until `agentic_ssh` MCP tools \
+have been tried. Delegation is still appropriate for local long-running execution work \
+such as builds, tests, or independent local implementation tasks.\n\n\
+These tools leverage an automatic connection pool (reusing active sessions and closing them after 5 minutes of inactivity), \
+handle SSH key-based authentication seamlessly, and support output abbreviation to prevent token bloat."
 }
 
 // ---------------------------------------------------------------------------
