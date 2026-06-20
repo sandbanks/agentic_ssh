@@ -362,7 +362,10 @@ fn install_claude_md_rules(claude_md_path: &Path) -> Result<()> {
         || existing_md.contains("## MANDATORY: No Explore Agents When AgenticSsh Is Available")
         || existing_md.contains("No Explore Agents When Codegraph Is Available")
     {
-        if existing_md.contains("agentic_ssh_context") || existing_md.contains("knowledge graph") || existing_md.contains("subagent_type=Explore") {
+        if existing_md.contains("agentic_ssh_context")
+            || existing_md.contains("knowledge graph")
+            || existing_md.contains("subagent_type=Explore")
+        {
             uninstall_claude_md_rules(claude_md_path);
         } else {
             eprintln!("  CLAUDE.md already contains agentic_ssh rules, skipping");
