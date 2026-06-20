@@ -84,9 +84,19 @@ impl AgentIntegration for GeminiIntegration {
             return false;
         }
         let json = super::load_json_file(&settings);
-        json.get("mcpServers")
-            .and_then(|v| v.get("agentic_ssh"))
-            .is_some()
+        if let Some(agentic_ssh) = json.get("mcpServers").and_then(|v| v.get("agentic_ssh")) {
+            if let Some(current_bin) = super::which_agentic_ssh() {
+                let cmd = agentic_ssh
+                    .get("command")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                cmd == current_bin
+            } else {
+                true
+            }
+        } else {
+            false
+        }
     }
 }
 

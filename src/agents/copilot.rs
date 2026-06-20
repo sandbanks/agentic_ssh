@@ -117,37 +117,62 @@ impl AgentIntegration for CopilotIntegration {
         let insiders_settings_path =
             super::vscode_insiders_data_dir(home).join("User/settings.json");
         let cli_settings_path = super::copilot_cli_dir(home).join("mcp-config.json");
+        let current_bin = super::which_agentic_ssh();
 
-        let vscode_has_agentic_ssh = if vscode_settings_path.exists() {
-            let json = load_jsonc_file(&vscode_settings_path);
-            json.get("mcp")
+        let check_vscode = |path: &Path| -> bool {
+            if !path.exists() {
+                return true;
+            }
+            let json = load_jsonc_file(path);
+            if let Some(agentic_ssh) = json
+                .get("mcp")
                 .and_then(|v| v.get("servers"))
                 .and_then(|v| v.get("agentic_ssh"))
-                .is_some()
-        } else {
-            false
+            {
+                if let Some(ref current) = current_bin {
+                    let cmd = agentic_ssh
+                        .get("command")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    cmd == current
+                } else {
+                    true
+                }
+            } else {
+                false
+            }
         };
 
-        let insiders_has_agentic_ssh = if insiders_settings_path.exists() {
-            let json = load_jsonc_file(&insiders_settings_path);
-            json.get("mcp")
-                .and_then(|v| v.get("servers"))
-                .and_then(|v| v.get("agentic_ssh"))
-                .is_some()
-        } else {
-            false
+        let check_cli = |path: &Path| -> bool {
+            if !path.exists() {
+                return true;
+            }
+            let json = load_json_file(path);
+            if let Some(agentic_ssh) = json.get("mcpServers").and_then(|v| v.get("agentic_ssh")) {
+                if let Some(ref current) = current_bin {
+                    let cmd = agentic_ssh
+                        .get("command")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    cmd == current
+                } else {
+                    true
+                }
+            } else {
+                false
+            }
         };
 
-        let cli_has_agentic_ssh = if cli_settings_path.exists() {
-            let json = load_json_file(&cli_settings_path);
-            json.get("mcpServers")
-                .and_then(|v| v.get("agentic_ssh"))
-                .is_some()
-        } else {
-            false
-        };
+        if !vscode_settings_path.exists()
+            && !insiders_settings_path.exists()
+            && !cli_settings_path.exists()
+        {
+            return false;
+        }
 
-        vscode_has_agentic_ssh || insiders_has_agentic_ssh || cli_has_agentic_ssh
+        check_vscode(&vscode_settings_path)
+            && check_vscode(&insiders_settings_path)
+            && check_cli(&cli_settings_path)
     }
 }
 

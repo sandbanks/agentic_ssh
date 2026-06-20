@@ -126,23 +126,38 @@ impl AgentIntegration for AntigravityIntegration {
     }
 
     fn has_agentic_ssh(&self, home: &Path) -> bool {
-        let ide_ok = {
-            let mcp_path = mcp_config_path(home);
-            mcp_path.exists()
-                && load_json_file(&mcp_path)
-                    .get("mcpServers")
-                    .and_then(|v| v.get("agentic_ssh"))
-                    .is_some()
+        let current_bin = super::which_agentic_ssh();
+        let check_file = |path: &Path| -> bool {
+            if !path.exists() {
+                return false;
+            }
+            let json = load_json_file(path);
+            if let Some(agentic_ssh) = json.get("mcpServers").and_then(|v| v.get("agentic_ssh")) {
+                if let Some(ref current) = current_bin {
+                    let cmd = agentic_ssh
+                        .get("command")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    cmd == *current
+                } else {
+                    true
+                }
+            } else {
+                false
+            }
         };
-        let cli_ok = {
-            let plugin_path = cli_plugin_path(home);
-            plugin_path.exists()
-                && load_json_file(&plugin_path)
-                    .get("mcpServers")
-                    .and_then(|v| v.get("agentic_ssh"))
-                    .is_some()
-        };
-        ide_ok || cli_ok
+
+        let mut ok = true;
+        let mut any_checked = false;
+        if home.join(".gemini/config").is_dir() || home.join(".gemini/antigravity").is_dir() {
+            ok = ok && check_file(&mcp_config_path(home));
+            any_checked = true;
+        }
+        if home.join(".gemini/antigravity-cli").is_dir() {
+            ok = ok && check_file(&cli_plugin_path(home));
+            any_checked = true;
+        }
+        any_checked && ok
     }
 }
 

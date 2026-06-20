@@ -755,9 +755,13 @@ mod migrate_tests {
     /// returns true for the given fake home.
     fn install_claude_marker(home: &Path) {
         let claude_json = home.join(".claude.json");
+        let bin = which_agentic_ssh().unwrap_or_else(|| "agentic_ssh".to_string());
         fs::write(
             &claude_json,
-            r#"{"mcpServers":{"agentic_ssh":{"command":"agentic_ssh","args":["serve"]}}}"#,
+            format!(
+                r#"{{"mcpServers":{{"agentic_ssh":{{"command":"{}","args":["serve"]}}}}}}"#,
+                bin
+            ),
         )
         .unwrap();
     }

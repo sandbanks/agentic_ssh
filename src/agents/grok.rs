@@ -86,9 +86,19 @@ impl AgentIntegration for GrokIntegration {
         // If the file is unparseable, conservatively report "not installed"
         // so the caller treats it like a fresh install path.
         super::load_toml_file(&config).is_ok_and(|toml| {
-            toml.get("mcp_servers")
-                .and_then(|v| v.get("agentic_ssh"))
-                .is_some()
+            if let Some(agentic_ssh) = toml.get("mcp_servers").and_then(|v| v.get("agentic_ssh")) {
+                if let Some(current_bin) = super::which_agentic_ssh() {
+                    let cmd = agentic_ssh
+                        .get("command")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    cmd == current_bin
+                } else {
+                    true
+                }
+            } else {
+                false
+            }
         })
     }
 }
