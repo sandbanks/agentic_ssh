@@ -105,6 +105,11 @@ enum Commands {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
+    let skip_auto_install = matches!(cli.command, Some(Commands::Uninstall { .. }));
+    if !skip_auto_install {
+        let _ = auto_install_if_needed();
+    }
+
     match cli.command {
         Some(Commands::Tui) => {
             run_tui()?;
@@ -390,4 +395,34 @@ fn run_tui() -> anyhow::Result<()> {
         let _ = std::io::Write::flush(&mut std::io::stdout());
         std::thread::sleep(Duration::from_secs(1));
     }
+}
+
+fn auto_install_if_needed() -> anyhow::Result<()> {
+    let home = crate::agents::home_dir()
+        .ok_or_else(|| anyhow::anyhow!("Could not determine user's home directory"))?;
+    let agentic_ssh_bin = match crate::agents::which_agentic_ssh() {
+        Some(bin) => bin,
+        None => return Ok(()),
+    };
+    let tool_permissions = crate::agents::expected_tool_perms();
+    let ctx = crate::agents::InstallContext {
+        home: home.clone(),
+        agentic_ssh_bin,
+        tool_permissions,
+        scope: crate::agents::InstallScope::Global,
+    };
+
+    let all = crate::agents::all_integrations();
+    for integration in all {
+        if integration.is_detected(&ctx.home) && !integration.has_agentic_ssh(&ctx.home) {
+            eprintln!(
+                "Auto-configuring agentic_ssh MCP server for {}...",
+                integration.name()
+            );
+            if let Err(e) = integration.install(&ctx) {
+                eprintln!("Failed to auto-configure {}: {}", integration.name(), e);
+            }
+        }
+    }
+    Ok(())
 }
