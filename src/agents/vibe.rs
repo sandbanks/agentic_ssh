@@ -92,7 +92,15 @@ impl AgentIntegration for VibeIntegration {
             return false;
         }
         let contents = std::fs::read_to_string(&config_path).unwrap_or_default();
-        contents.contains(TOML_MARKER)
+        if !contents.contains(TOML_MARKER) {
+            return false;
+        }
+        if let Some(current_bin) = super::which_agentic_ssh() {
+            let path_marker = format!("command = \"{current_bin}\"");
+            contents.contains(&path_marker)
+        } else {
+            true
+        }
     }
 }
 
@@ -109,11 +117,20 @@ fn install_mcp_server(config_path: &Path, agentic_ssh_bin: &str) -> Result<()> {
     };
 
     if existing.contains(TOML_MARKER) {
-        eprintln!(
-            "  agentic_ssh MCP server already registered in {}, skipping",
-            config_path.display()
-        );
-        return Ok(());
+        let path_marker = format!("command = \"{agentic_ssh_bin}\"");
+        if existing.contains(&path_marker) {
+            eprintln!(
+                "  agentic_ssh MCP server already registered in {}, skipping",
+                config_path.display()
+            );
+            return Ok(());
+        } else {
+            eprintln!(
+                "  Updating agentic_ssh binary location in {}",
+                config_path.display()
+            );
+            uninstall_mcp_server(config_path);
+        }
     }
 
     let block = format!(
@@ -338,6 +355,12 @@ fn doctor_check_config(dc: &mut DoctorCounters, home: &Path) {
             "MCP server registered in {}",
             config_path.display()
         ));
+        if let Some(current_bin) = super::which_agentic_ssh() {
+            let path_marker = format!("command = \"{current_bin}\"");
+            if !contents.contains(&path_marker) {
+                dc.warn("MCP binary path in Vibe config differs from current executable");
+            }
+        }
     } else {
         dc.fail(&format!(
             "MCP server NOT registered in {} — run `agentic_ssh install --agent vibe`",

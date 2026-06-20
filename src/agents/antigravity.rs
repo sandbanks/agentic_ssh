@@ -2,7 +2,7 @@
 //!
 //! Handles registration of the agentic_ssh MCP server in:
 //!
-//! - `~/.gemini/antigravity/mcp_config.json` — the Antigravity IDE config,
+//! - `~/.gemini/config/mcp_config.json` — the central Antigravity config,
 //!   shape `{"mcpServers": {"agentic_ssh": {...}}}`.
 //! - `~/.gemini/antigravity-cli/plugins/agentic_ssh.json` — the Antigravity
 //!   CLI (`agy`) plugin file, same shape. Required because the IDE config
@@ -26,7 +26,7 @@ use super::{
 pub struct AntigravityIntegration;
 
 fn mcp_config_path(home: &Path) -> std::path::PathBuf {
-    home.join(".gemini/antigravity/mcp_config.json")
+    home.join(".gemini/config/mcp_config.json")
 }
 
 /// Per-plugin file used by the Antigravity CLI. Holds the same shape as
@@ -45,7 +45,7 @@ impl AgentIntegration for AntigravityIntegration {
     }
 
     fn install(&self, ctx: &InstallContext) -> Result<()> {
-        // 1. Antigravity IDE config (~/.gemini/antigravity/mcp_config.json)
+        // 1. Antigravity central config (~/.gemini/config/mcp_config.json)
         let mcp_path = mcp_config_path(&ctx.home);
         if let Some(parent) = mcp_path.parent() {
             std::fs::create_dir_all(parent).ok();
@@ -225,7 +225,7 @@ fn doctor_check_settings(dc: &mut DoctorCounters, home: &Path) {
 
     if !mcp_path.exists() {
         dc.warn(&format!(
-            "{} not found — run `agentic_ssh install --agent antigravity` if you use the Antigravity IDE",
+            "{} not found — run `agentic_ssh install --agent antigravity` if you use Antigravity",
             mcp_path.display()
         ));
         return;
@@ -238,7 +238,7 @@ fn doctor_check_settings(dc: &mut DoctorCounters, home: &Path) {
 
     if server.and_then(|v| v.as_object()).is_some() {
         dc.pass(&format!(
-            "IDE MCP server registered in {}",
+            "Central MCP server registered in {}",
             mcp_path.display()
         ));
     } else {
