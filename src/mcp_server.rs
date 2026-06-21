@@ -1059,6 +1059,7 @@ impl McpServer {
                             };
 
                             let handle = pool.get_connection(&host).await?;
+                            let _guard = pool.start_operation(&host).await;
                             let mut channel = handle
                                 .channel_open_session()
                                 .await

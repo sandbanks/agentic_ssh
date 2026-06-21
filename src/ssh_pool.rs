@@ -138,6 +138,8 @@ pub fn get_pool_status_path() -> std::path::PathBuf {
 pub struct SshConnection {
     pub handle: Arc<Handle<ClientHandler>>,
     pub last_used: Instant,
+    pub active_operations: usize,
+    pub idle_timeout_secs: u64,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
@@ -145,11 +147,63 @@ pub struct ConnectionStatus {
     pub host: String,
     pub last_used_timestamp: u64,
     pub idle_timeout_secs: u64,
+    #[serde(default)]
+    pub status: String,
 }
 
 pub struct ConnectionPool {
     connections: Arc<Mutex<HashMap<String, SshConnection>>>,
     idle_timeout: Duration,
+}
+
+pub struct ActiveOperationGuard {
+    connections: Arc<Mutex<HashMap<String, SshConnection>>>,
+    host: String,
+    pool_status_path: std::path::PathBuf,
+}
+
+impl Drop for ActiveOperationGuard {
+    fn drop(&mut self) {
+        let connections = Arc::clone(&self.connections);
+        let host = self.host.clone();
+        let path = self.pool_status_path.clone();
+        tokio::spawn(async move {
+            let mut map = connections.lock().await;
+            if let Some(conn) = map.get_mut(&host) {
+                conn.active_operations = conn.active_operations.saturating_sub(1);
+                if conn.active_operations == 0 {
+                    conn.last_used = Instant::now();
+                }
+            }
+            // Save status
+            let now = Instant::now();
+            let now_unix = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+
+            let statuses: Vec<ConnectionStatus> = map
+                .iter()
+                .map(|(h, c)| {
+                    let (last_used_unix, status_str) = if c.active_operations > 0 {
+                        (now_unix, "Executing".to_string())
+                    } else {
+                        let elapsed = now.duration_since(c.last_used);
+                        (now_unix.saturating_sub(elapsed.as_secs()), "Active".to_string())
+                    };
+                    ConnectionStatus {
+                        host: h.clone(),
+                        last_used_timestamp: last_used_unix,
+                        idle_timeout_secs: c.idle_timeout_secs,
+                        status: status_str,
+                    }
+                })
+                .collect();
+            if let Ok(file) = std::fs::File::create(path) {
+                let _ = serde_json::to_writer_pretty(file, &statuses);
+            }
+        });
+    }
 }
 
 impl ConnectionPool {
@@ -170,7 +224,9 @@ impl ConnectionPool {
                 let mut map = pool_clone.lock().await;
                 let now = Instant::now();
                 map.retain(|host, conn| {
-                    if now.duration_since(conn.last_used) > idle_timeout {
+                    if conn.active_operations > 0 {
+                        true
+                    } else if now.duration_since(conn.last_used) > idle_timeout {
                         eprintln!("Closing idle connection to host: {}", host);
                         false
                     } else {
@@ -186,12 +242,17 @@ impl ConnectionPool {
                 let statuses: Vec<ConnectionStatus> = map
                     .iter()
                     .map(|(host, conn)| {
-                        let elapsed = now.duration_since(conn.last_used);
-                        let last_used_unix = now_unix.saturating_sub(elapsed.as_secs());
+                        let (last_used_unix, status_str) = if conn.active_operations > 0 {
+                            (now_unix, "Executing".to_string())
+                        } else {
+                            let elapsed = now.duration_since(conn.last_used);
+                            (now_unix.saturating_sub(elapsed.as_secs()), "Active".to_string())
+                        };
                         ConnectionStatus {
                             host: host.clone(),
                             last_used_timestamp: last_used_unix,
                             idle_timeout_secs: idle_timeout.as_secs(),
+                            status: status_str,
                         }
                     })
                     .collect();
@@ -215,17 +276,37 @@ impl ConnectionPool {
         let statuses: Vec<ConnectionStatus> = map
             .iter()
             .map(|(host, conn)| {
-                let elapsed = now.duration_since(conn.last_used);
-                let last_used_unix = now_unix.saturating_sub(elapsed.as_secs());
+                let (last_used_unix, status_str) = if conn.active_operations > 0 {
+                    (now_unix, "Executing".to_string())
+                } else {
+                    let elapsed = now.duration_since(conn.last_used);
+                    (now_unix.saturating_sub(elapsed.as_secs()), "Active".to_string())
+                };
                 ConnectionStatus {
                     host: host.clone(),
                     last_used_timestamp: last_used_unix,
                     idle_timeout_secs: self.idle_timeout.as_secs(),
+                    status: status_str,
                 }
             })
             .collect();
         if let Ok(file) = std::fs::File::create(get_pool_status_path()) {
             let _ = serde_json::to_writer_pretty(file, &statuses);
+        }
+    }
+
+    pub async fn start_operation(&self, host: &str) -> ActiveOperationGuard {
+        let mut map = self.connections.lock().await;
+        if let Some(conn) = map.get_mut(host) {
+            conn.active_operations += 1;
+        }
+        drop(map);
+        self.save_status().await;
+
+        ActiveOperationGuard {
+            connections: Arc::clone(&self.connections),
+            host: host.to_string(),
+            pool_status_path: get_pool_status_path(),
         }
     }
 
@@ -275,6 +356,8 @@ impl ConnectionPool {
             SshConnection {
                 handle: Arc::clone(&handle),
                 last_used: Instant::now(),
+                active_operations: 0,
+                idle_timeout_secs: self.idle_timeout.as_secs(),
             },
         );
 
@@ -438,15 +521,7 @@ impl ConnectionPool {
         command: &str,
     ) -> Result<(String, String, u32)> {
         let handle = self.get_connection(host).await?;
-
-        // Update last used timestamp
-        {
-            let mut map = self.connections.lock().await;
-            if let Some(conn) = map.get_mut(host) {
-                conn.last_used = Instant::now();
-            }
-        }
-        self.save_status().await;
+        let _guard = self.start_operation(host).await;
 
         eprintln!("Executing command on {}: {:?}", host, command);
         let mut channel = handle

@@ -324,12 +324,26 @@ fn run_tui() -> anyhow::Result<()> {
                 for status in statuses {
                     let elapsed_secs = now_unix.saturating_sub(status.last_used_timestamp);
                     let remaining_secs = status.idle_timeout_secs.saturating_sub(elapsed_secs);
+                    let is_executing = status.status == "Executing";
 
-                    if remaining_secs > 0 {
-                        let last_used_str = format!("{}s ago", elapsed_secs);
-                        let auto_close_str = format!("{}s left", remaining_secs);
+                    if remaining_secs > 0 || is_executing {
+                        let last_used_str = if is_executing {
+                            "now".to_string()
+                        } else {
+                            format!("{}s ago", elapsed_secs)
+                        };
+                        let auto_close_str = if is_executing {
+                            "pinned".to_string()
+                        } else {
+                            format!("{}s left", remaining_secs)
+                        };
+                        let status_str = if status.status.is_empty() {
+                            "Active".to_string()
+                        } else {
+                            status.status.clone()
+                        };
                         max_host_len = max_host_len.max(status.host.len());
-                        active_connections.push((status.host, last_used_str, auto_close_str));
+                        active_connections.push((status.host, last_used_str, auto_close_str, status_str));
                     }
                 }
             }
@@ -372,13 +386,19 @@ fn run_tui() -> anyhow::Result<()> {
                 width = inner_width
             );
         } else {
-            for (host, last_used_str, auto_close_str) in &active_connections {
+            for (host, last_used_str, auto_close_str, status_str) in &active_connections {
+                let status_color = if status_str == "Executing" {
+                    "\x1B[33m" // Yellow for executing
+                } else {
+                    "\x1B[32m" // Green for active
+                };
                 println!(
-                    "│ {:<width$} │ {:<12} │ {:<12} │ \x1B[32m{:<10}\x1B[0m │",
+                    "│ {:<width$} │ {:<12} │ {:<12} │ {}{:<10}\x1B[0m │",
                     host,
                     last_used_str,
                     auto_close_str,
-                    "Active",
+                    status_color,
+                    status_str,
                     width = max_host_len
                 );
             }
