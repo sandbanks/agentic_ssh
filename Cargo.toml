@@ -1,6 +1,6 @@
 [package]
 name = "agentic_ssh"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 description = """
 **High-performance MCP server enabling AI agents to securely execute commands on remote SSH hosts**
