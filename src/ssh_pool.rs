@@ -189,7 +189,10 @@ impl Drop for ActiveOperationGuard {
                         (now_unix, "Executing".to_string())
                     } else {
                         let elapsed = now.duration_since(c.last_used);
-                        (now_unix.saturating_sub(elapsed.as_secs()), "Active".to_string())
+                        (
+                            now_unix.saturating_sub(elapsed.as_secs()),
+                            "Active".to_string(),
+                        )
                     };
                     ConnectionStatus {
                         host: h.clone(),
@@ -246,7 +249,10 @@ impl ConnectionPool {
                             (now_unix, "Executing".to_string())
                         } else {
                             let elapsed = now.duration_since(conn.last_used);
-                            (now_unix.saturating_sub(elapsed.as_secs()), "Active".to_string())
+                            (
+                                now_unix.saturating_sub(elapsed.as_secs()),
+                                "Active".to_string(),
+                            )
                         };
                         ConnectionStatus {
                             host: host.clone(),
@@ -280,7 +286,10 @@ impl ConnectionPool {
                     (now_unix, "Executing".to_string())
                 } else {
                     let elapsed = now.duration_since(conn.last_used);
-                    (now_unix.saturating_sub(elapsed.as_secs()), "Active".to_string())
+                    (
+                        now_unix.saturating_sub(elapsed.as_secs()),
+                        "Active".to_string(),
+                    )
                 };
                 ConnectionStatus {
                     host: host.clone(),

@@ -343,7 +343,12 @@ fn run_tui() -> anyhow::Result<()> {
                             status.status.clone()
                         };
                         max_host_len = max_host_len.max(status.host.len());
-                        active_connections.push((status.host, last_used_str, auto_close_str, status_str));
+                        active_connections.push((
+                            status.host,
+                            last_used_str,
+                            auto_close_str,
+                            status_str,
+                        ));
                     }
                 }
             }
