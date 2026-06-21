@@ -1,16 +1,8 @@
 [package]
 name = "agentic_ssh"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2024"
-description = """
-High-performance MCP server enabling AI agents to securely execute commands on remote SSH hosts.
-
-agentic_ssh is a feature-rich Model Context Protocol (MCP) server that empowers AI agents with seamless,
-secure remote system access. It automatically parses SSH configs, manages connection pools with idle timeout
-cleanup, and provides 12+ built-in tools for remote execution, monitoring, and system inspection.
-Supports 15+ AI agents with one-command auto-installation.
-Built with async Rust (tokio + russh) and mimalloc for maximum performance.
-"""
+description = "A minimalist, secure engineering primitive for agentic SSH execution loops."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/sandbanks/agentic_ssh"
 homepage = "https://github.com/sandbanks/agentic_ssh"
