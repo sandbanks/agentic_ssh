@@ -1,6 +1,6 @@
 [package]
 name = "agentic_ssh"
-version = "0.2.5"
+version = "0.2.6"
 edition = "2024"
 description = "A minimalist, secure engineering primitive for agentic SSH execution loops."
 license = "MIT OR Apache-2.0"
