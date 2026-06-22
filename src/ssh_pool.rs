@@ -186,9 +186,7 @@ impl Config {
 
 pub fn extract_placeholders(s: &str) -> Vec<String> {
     let re = regex::Regex::new(r"\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}").unwrap();
-    re.captures_iter(s)
-        .map(|cap| cap[1].to_string())
-        .collect()
+    re.captures_iter(s).map(|cap| cap[1].to_string()).collect()
 }
 
 pub fn replace_placeholders(template: &str, args: &HashMap<String, String>) -> Result<String> {
@@ -238,14 +236,21 @@ pub fn validate_param_value(value: &str, rule: &str) -> bool {
             !value.is_empty() && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
         }
         "path" => {
-            !value.is_empty() && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '/' || c == '.' || c == '-' || c == '_')
+            !value.is_empty()
+                && value.chars().all(|c| {
+                    c.is_ascii_alphanumeric() || c == '/' || c == '.' || c == '-' || c == '_'
+                })
         }
         "permissive" => true,
         _ => false,
     }
 }
 
-pub fn is_host_allowed_for_tool(host: &str, resolved_host: Option<&str>, allow_hosts: &[String]) -> bool {
+pub fn is_host_allowed_for_tool(
+    host: &str,
+    resolved_host: Option<&str>,
+    allow_hosts: &[String],
+) -> bool {
     if allow_hosts.is_empty() {
         return true;
     }
@@ -270,15 +275,19 @@ pub fn is_host_allowed_for_tool(host: &str, resolved_host: Option<&str>, allow_h
 }
 
 pub fn load_config_from_str(content: &str) -> Result<Config> {
-    let config: Config = toml::from_str(content)
-        .context("Failed to parse TOML configuration")?;
-    config.validate().context("Configuration validation failed")?;
+    let config: Config = toml::from_str(content).context("Failed to parse TOML configuration")?;
+    config
+        .validate()
+        .context("Configuration validation failed")?;
     Ok(config)
 }
 
 pub fn load_config() -> Config {
     let path = match home::home_dir() {
-        Some(home_dir) => home_dir.join(".config").join("agentic_ssh").join("config.toml"),
+        Some(home_dir) => home_dir
+            .join(".config")
+            .join("agentic_ssh")
+            .join("config.toml"),
         None => return Config::default(),
     };
 
@@ -309,28 +318,38 @@ pub fn load_config() -> Config {
             let mut params = HashMap::new();
             if command_str.contains("{args}") {
                 command_str = command_str.replace("{args}", "{{args}}");
-                params.insert("args".to_string(), ParamInfo { validation: "permissive".to_string() });
+                params.insert(
+                    "args".to_string(),
+                    ParamInfo {
+                        validation: "permissive".to_string(),
+                    },
+                );
             }
-            cfg.tools.insert(custom.name, PreparedTool {
-                description: custom.description,
-                command: CommandTemplate::Simple(command_str),
-                allow_shell: true,
-                allow_hosts: Vec::new(),
-                params,
-            });
+            cfg.tools.insert(
+                custom.name,
+                PreparedTool {
+                    description: custom.description,
+                    command: CommandTemplate::Simple(command_str),
+                    allow_shell: true,
+                    allow_hosts: Vec::new(),
+                    params,
+                },
+            );
         }
 
         // Write the migrated config back to the file
         if let Ok(toml_string) = toml::to_string_pretty(&cfg) {
             let _ = std::fs::write(&path, toml_string).map_err(|e| {
-                eprintln!("Warning: failed to write migrated config to {:?}: {}", path, e);
+                eprintln!(
+                    "Warning: failed to write migrated config to {:?}: {}",
+                    path, e
+                );
             });
         }
     }
 
     cfg
 }
-
 
 pub fn is_host_ignored(host: &str, resolved_host: Option<&str>) -> bool {
     let config = load_config();
@@ -1032,7 +1051,9 @@ mod tests {
         let cfg4 = load_config_from_str(content4);
         assert!(cfg4.is_err());
         let err_msg = format!("{:#}", cfg4.err().unwrap());
-        assert!(err_msg.contains("parameter 'branch' is used in the command template but not defined in the params block"));
+        assert!(err_msg.contains(
+            "parameter 'branch' is used in the command template but not defined in the params block"
+        ));
 
         // 5. Unrecognized validation rule -> Validation error
         let content5 = r#"
@@ -1064,7 +1085,10 @@ mod tests {
         assert!(!validate_param_value("", "path"));
 
         // permissive: any
-        assert!(validate_param_value("anything-goes; rm -rf /", "permissive"));
+        assert!(validate_param_value(
+            "anything-goes; rm -rf /",
+            "permissive"
+        ));
         assert!(validate_param_value("", "permissive"));
     }
 
@@ -1077,7 +1101,10 @@ mod tests {
             "hello 'world'; rm -rf /".to_string(),
         ];
         let escaped = shell_join(&args);
-        assert_eq!(escaped, r#"'git' 'commit' '-m' 'hello '\''world'\''; rm -rf /'"#);
+        assert_eq!(
+            escaped,
+            r#"'git' 'commit' '-m' 'hello '\''world'\''; rm -rf /'"#
+        );
     }
 
     #[test]
@@ -1085,12 +1112,24 @@ mod tests {
         let allowed = vec!["dev-*".to_string(), "staging-*".to_string()];
 
         assert!(is_host_allowed_for_tool("dev-box", None, &allowed));
-        assert!(is_host_allowed_for_tool("staging-server-01", None, &allowed));
+        assert!(is_host_allowed_for_tool(
+            "staging-server-01",
+            None,
+            &allowed
+        ));
         assert!(!is_host_allowed_for_tool("prod-box", None, &allowed));
 
         // Resolved hostname match
-        assert!(is_host_allowed_for_tool("my-alias", Some("dev-box-resolved"), &allowed));
-        assert!(!is_host_allowed_for_tool("my-alias", Some("prod-box-resolved"), &allowed));
+        assert!(is_host_allowed_for_tool(
+            "my-alias",
+            Some("dev-box-resolved"),
+            &allowed
+        ));
+        assert!(!is_host_allowed_for_tool(
+            "my-alias",
+            Some("prod-box-resolved"),
+            &allowed
+        ));
 
         // Empty allow_hosts means allowed everywhere
         assert!(is_host_allowed_for_tool("prod-box", None, &[]));
@@ -1124,15 +1163,23 @@ mod tests {
             let mut params = HashMap::new();
             if command_str.contains("{args}") {
                 command_str = command_str.replace("{args}", "{{args}}");
-                params.insert("args".to_string(), ParamInfo { validation: "permissive".to_string() });
+                params.insert(
+                    "args".to_string(),
+                    ParamInfo {
+                        validation: "permissive".to_string(),
+                    },
+                );
             }
-            cfg.tools.insert(custom.name, PreparedTool {
-                description: custom.description,
-                command: CommandTemplate::Simple(command_str),
-                allow_shell: true,
-                allow_hosts: Vec::new(),
-                params,
-            });
+            cfg.tools.insert(
+                custom.name,
+                PreparedTool {
+                    description: custom.description,
+                    command: CommandTemplate::Simple(command_str),
+                    allow_shell: true,
+                    allow_hosts: Vec::new(),
+                    params,
+                },
+            );
         }
 
         assert_eq!(cfg.custom_tools.len(), 0);
@@ -1145,9 +1192,10 @@ mod tests {
 
         let t2 = cfg.tools.get("legacy_tool_with_args").unwrap();
         assert!(t2.allow_shell);
-        assert!(matches!(t2.command, CommandTemplate::Simple(ref s) if s == "grep -i '{{args}}' /var/log/syslog"));
+        assert!(
+            matches!(t2.command, CommandTemplate::Simple(ref s) if s == "grep -i '{{args}}' /var/log/syslog")
+        );
         assert_eq!(t2.params.len(), 1);
         assert_eq!(t2.params.get("args").unwrap().validation, "permissive");
     }
 }
-

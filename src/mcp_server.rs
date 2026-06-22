@@ -415,7 +415,8 @@ impl McpServer {
                 let mut tools_val = tools;
                 if let Some(tools_arr) = tools_val.get_mut("tools").and_then(|t| t.as_array_mut()) {
                     let config = crate::ssh_pool::load_config();
-                    let mut sorted_tools: Vec<(&String, &crate::ssh_pool::PreparedTool)> = config.tools.iter().collect();
+                    let mut sorted_tools: Vec<(&String, &crate::ssh_pool::PreparedTool)> =
+                        config.tools.iter().collect();
                     sorted_tools.sort_by(|a, b| a.0.cmp(b.0));
 
                     for (name, tool) in sorted_tools {
@@ -429,14 +430,18 @@ impl McpServer {
                             "type": "string",
                             "description": "The SSH host to query. Provide either 'host' or 'hosts', but not both."
                         }));
-                        properties.insert("hosts".to_string(), serde_json::json!({
-                            "type": "array",
-                            "items": { "type": "string" },
-                            "description": "Optional: list of SSH hosts to query concurrently"
-                        }));
+                        properties.insert(
+                            "hosts".to_string(),
+                            serde_json::json!({
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "Optional: list of SSH hosts to query concurrently"
+                            }),
+                        );
 
                         let mut required = Vec::new();
-                        let mut sorted_params: Vec<(&String, &crate::ssh_pool::ParamInfo)> = tool.params.iter().collect();
+                        let mut sorted_params: Vec<(&String, &crate::ssh_pool::ParamInfo)> =
+                            tool.params.iter().collect();
                         sorted_params.sort_by(|a, b| a.0.cmp(b.0));
                         for (param_name, param_info) in sorted_params {
                             properties.insert(param_name.clone(), serde_json::json!({
@@ -561,7 +566,11 @@ impl McpServer {
                     .as_deref()
                     .unwrap_or(host)
                     .to_string();
-                if !crate::ssh_pool::is_host_allowed_for_tool(host, Some(&real_host), &tool.allow_hosts) {
+                if !crate::ssh_pool::is_host_allowed_for_tool(
+                    host,
+                    Some(&real_host),
+                    &tool.allow_hosts,
+                ) {
                     return Ok(serde_json::json!({
                         "content": [{
                             "type": "text",
