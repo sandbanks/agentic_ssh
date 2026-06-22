@@ -415,33 +415,44 @@ impl McpServer {
                 let mut tools_val = tools;
                 if let Some(tools_arr) = tools_val.get_mut("tools").and_then(|t| t.as_array_mut()) {
                     let config = crate::ssh_pool::load_config();
-                    for custom in config.custom_tools {
+                    let mut sorted_tools: Vec<(&String, &crate::ssh_pool::PreparedTool)> = config.tools.iter().collect();
+                    sorted_tools.sort_by(|a, b| a.0.cmp(b.0));
+
+                    for (name, tool) in sorted_tools {
                         // Remove native tool with same name to enforce custom precedence/override
                         tools_arr.retain(|t| {
-                            t.get("name").and_then(|n| n.as_str()) != Some(&custom.name)
+                            t.get("name").and_then(|n| n.as_str()) != Some(name.as_str())
                         });
 
+                        let mut properties = serde_json::Map::new();
+                        properties.insert("host".to_string(), serde_json::json!({
+                            "type": "string",
+                            "description": "The SSH host to query. Provide either 'host' or 'hosts', but not both."
+                        }));
+                        properties.insert("hosts".to_string(), serde_json::json!({
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Optional: list of SSH hosts to query concurrently"
+                        }));
+
+                        let mut required = Vec::new();
+                        let mut sorted_params: Vec<(&String, &crate::ssh_pool::ParamInfo)> = tool.params.iter().collect();
+                        sorted_params.sort_by(|a, b| a.0.cmp(b.0));
+                        for (param_name, param_info) in sorted_params {
+                            properties.insert(param_name.clone(), serde_json::json!({
+                                "type": "string",
+                                "description": format!("Parameter: {} (validation: {})", param_name, param_info.validation)
+                            }));
+                            required.push(param_name.clone());
+                        }
+
                         tools_arr.push(serde_json::json!({
-                            "name": custom.name,
-                            "description": custom.description,
+                            "name": name,
+                            "description": tool.description,
                             "inputSchema": {
                                 "type": "object",
-                                "properties": {
-                                    "host": {
-                                        "type": "string",
-                                        "description": "The SSH host to query"
-                                    },
-                                    "hosts": {
-                                        "type": "array",
-                                        "items": { "type": "string" },
-                                        "description": "Optional: list of SSH hosts to query concurrently"
-                                    },
-                                    "args": {
-                                        "type": "string",
-                                        "description": "Optional arguments/parameters to pass to the command (replaces {args} in the template or is appended)"
-                                    }
-                                },
-                                "required": []
+                                "properties": properties,
+                                "required": required
                             }
                         }));
                     }
@@ -502,16 +513,98 @@ impl McpServer {
 
         // Check for custom tool first to enforce custom precedence/override
         let config = crate::ssh_pool::load_config();
-        if let Some(custom) = config.custom_tools.iter().find(|t| t.name == name) {
+        if let Some(tool) = config.tools.get(name) {
             let (hosts, is_multi) = parse_hosts(&arguments)?;
-            let args = arguments.get("args").and_then(|v| v.as_str()).unwrap_or("");
 
-            let cmd_to_run = if custom.command.contains("{args}") {
-                custom.command.replace("{args}", args)
-            } else if !args.is_empty() {
-                format!("{} {}", custom.command, args)
-            } else {
-                custom.command.clone()
+            // Extract, validate, and collect parameter values
+            let mut param_values = std::collections::HashMap::new();
+            for (param_name, param_info) in &tool.params {
+                let val_opt = arguments.get(param_name).and_then(|v| v.as_str());
+                let val = match val_opt {
+                    Some(v) => v.to_string(),
+                    None => {
+                        return Ok(serde_json::json!({
+                            "content": [{
+                                "type": "text",
+                                "text": format!("Error: Missing required parameter '{}' for tool '{}'", param_name, name)
+                            }],
+                            "isError": true
+                        }));
+                    }
+                };
+
+                // Validate the parameter value
+                if !crate::ssh_pool::validate_param_value(&val, &param_info.validation) {
+                    return Ok(serde_json::json!({
+                        "content": [{
+                            "type": "text",
+                            "text": format!(
+                                "Error: Parameter '{}' failed validation with rule '{}'. Provided value: {:?}",
+                                param_name,
+                                param_info.validation,
+                                val
+                            )
+                        }],
+                        "isError": true
+                    }));
+                }
+
+                param_values.insert(param_name.clone(), val);
+            }
+
+            // Verify hosts against allow_hosts if specified on the tool
+            let ssh_config = crate::ssh_config::load_ssh_config().unwrap_or_default();
+            for host in &hosts {
+                let real_host = ssh_config
+                    .query(host)
+                    .host_name
+                    .as_deref()
+                    .unwrap_or(host)
+                    .to_string();
+                if !crate::ssh_pool::is_host_allowed_for_tool(host, Some(&real_host), &tool.allow_hosts) {
+                    return Ok(serde_json::json!({
+                        "content": [{
+                            "type": "text",
+                            "text": format!("Error: Access to host '{}' is not allowed for tool '{}'", host, name)
+                        }],
+                        "isError": true
+                    }));
+                }
+            }
+
+            // Construct the final command to run
+            let cmd_to_run = match &tool.command {
+                crate::ssh_pool::CommandTemplate::Simple(cmd_str) => {
+                    match crate::ssh_pool::replace_placeholders(cmd_str, &param_values) {
+                        Ok(cmd) => cmd,
+                        Err(e) => {
+                            return Ok(serde_json::json!({
+                                "content": [{ "type": "text", "text": format!("Error interpolating command: {:#}", e) }],
+                                "isError": true
+                            }));
+                        }
+                    }
+                }
+                crate::ssh_pool::CommandTemplate::Array(cmd_array) => {
+                    let mut substituted_args = Vec::new();
+                    let mut interpolate_err = None;
+                    for arg in cmd_array {
+                        match crate::ssh_pool::replace_placeholders(arg, &param_values) {
+                            Ok(subbed) => substituted_args.push(subbed),
+                            Err(e) => {
+                                interpolate_err = Some(e);
+                                break;
+                            }
+                        }
+                    }
+                    if let Some(e) = interpolate_err {
+                        return Ok(serde_json::json!({
+                            "content": [{ "type": "text", "text": format!("Error interpolating command: {:#}", e) }],
+                            "isError": true
+                        }));
+                    }
+                    crate::ssh_pool::shell_join(&substituted_args)
+                }
             };
 
             let run_custom = {

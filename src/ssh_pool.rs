@@ -22,37 +22,266 @@ impl russh::client::Handler for ClientHandler {
     }
 }
 
-#[derive(serde::Deserialize, Debug, Clone)]
-pub struct CustomTool {
-    pub name: String,
-    pub description: String,
-    pub command: String,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CommandTemplate {
+    Simple(String),
+    Array(Vec<String>),
 }
 
-#[derive(serde::Deserialize, Debug, Default)]
+impl<'de> serde::Deserialize<'de> for CommandTemplate {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct Visitor;
+
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = CommandTemplate;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a string or an array of strings")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(CommandTemplate::Simple(value.to_string()))
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                let mut vec = Vec::new();
+                while let Some(elem) = seq.next_element::<String>()? {
+                    vec.push(elem);
+                }
+                Ok(CommandTemplate::Array(vec))
+            }
+        }
+
+        deserializer.deserialize_any(Visitor)
+    }
+}
+
+#[derive(serde::Deserialize, Debug, Clone)]
+pub struct ParamInfo {
+    pub validation: String,
+}
+
+#[derive(serde::Deserialize, Debug, Clone)]
+pub struct PreparedTool {
+    pub description: String,
+    pub command: CommandTemplate,
+    #[serde(default)]
+    pub allow_shell: bool,
+    #[serde(default)]
+    pub allow_hosts: Vec<String>,
+    #[serde(default)]
+    pub params: HashMap<String, ParamInfo>,
+}
+
+impl PreparedTool {
+    pub fn validate(&self, tool_name: &str) -> Result<()> {
+        match &self.command {
+            CommandTemplate::Simple(cmd_str) => {
+                if !self.allow_shell {
+                    anyhow::bail!(
+                        "Tool '{}': command is a string, but allow_shell is false. A string command requires allow_shell = true.",
+                        tool_name
+                    );
+                }
+                let placeholders = extract_placeholders(cmd_str);
+                for placeholder in &placeholders {
+                    if !self.params.contains_key(placeholder) {
+                        anyhow::bail!(
+                            "Tool '{}': parameter '{}' is used in the command template but not defined in the params block.",
+                            tool_name,
+                            placeholder
+                        );
+                    }
+                }
+            }
+            CommandTemplate::Array(cmd_array) => {
+                if self.allow_shell {
+                    anyhow::bail!(
+                        "Tool '{}': command is an array, but allow_shell is true. An array command requires allow_shell = false.",
+                        tool_name
+                    );
+                }
+                for arg in cmd_array {
+                    let placeholders = extract_placeholders(arg);
+                    for placeholder in &placeholders {
+                        if !self.params.contains_key(placeholder) {
+                            anyhow::bail!(
+                                "Tool '{}': parameter '{}' is used in the command template but not defined in the params block.",
+                                tool_name,
+                                placeholder
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        for (param_name, param_info) in &self.params {
+            match param_info.validation.as_str() {
+                "strict" | "path" | "permissive" => {}
+                other => {
+                    anyhow::bail!(
+                        "Tool '{}': parameter '{}' has unrecognized validation type '{}'. Supported types are: strict, path, permissive.",
+                        tool_name,
+                        param_name,
+                        other
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(serde::Deserialize, Debug, Default, Clone)]
 pub struct Config {
     pub pool_status_path: Option<String>,
     #[serde(default)]
-    pub custom_tools: Vec<CustomTool>,
+    pub tools: HashMap<String, PreparedTool>,
     #[serde(default)]
     pub ignore_hosts: Vec<String>,
     #[serde(default, alias = "include_hosts")]
     pub allow_hosts: Vec<String>,
 }
 
-pub fn load_config() -> Config {
-    home::home_dir()
-        .map(|home_dir| {
-            home_dir
-                .join(".config")
-                .join("agentic_ssh")
-                .join("config.toml")
-        })
-        .filter(|path| path.exists())
-        .and_then(|path| std::fs::read_to_string(path).ok())
-        .and_then(|content| toml::from_str::<Config>(&content).ok())
-        .unwrap_or_default()
+impl Config {
+    pub fn validate(&self) -> Result<()> {
+        for (name, tool) in &self.tools {
+            tool.validate(name)?;
+        }
+        Ok(())
+    }
 }
+
+pub fn extract_placeholders(s: &str) -> Vec<String> {
+    let re = regex::Regex::new(r"\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}").unwrap();
+    re.captures_iter(s)
+        .map(|cap| cap[1].to_string())
+        .collect()
+}
+
+pub fn replace_placeholders(template: &str, args: &HashMap<String, String>) -> Result<String> {
+    let re = regex::Regex::new(r"\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}").unwrap();
+    let mut err = None;
+    let result = re.replace_all(template, |caps: &regex::Captures| {
+        let param_name = &caps[1];
+        match args.get(param_name) {
+            Some(val) => val.clone(),
+            None => {
+                err = Some(anyhow!("Missing value for parameter '{}'", param_name));
+                caps[0].to_string()
+            }
+        }
+    });
+    if let Some(e) = err {
+        Err(e)
+    } else {
+        Ok(result.into_owned())
+    }
+}
+
+pub fn shell_escape(arg: &str) -> String {
+    let mut escaped = String::new();
+    escaped.push('\'');
+    for c in arg.chars() {
+        if c == '\'' {
+            escaped.push_str("'\\''");
+        } else {
+            escaped.push(c);
+        }
+    }
+    escaped.push('\'');
+    escaped
+}
+
+pub fn shell_join(args: &[String]) -> String {
+    args.iter()
+        .map(|arg| shell_escape(arg))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+pub fn validate_param_value(value: &str, rule: &str) -> bool {
+    match rule {
+        "strict" => {
+            !value.is_empty() && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        }
+        "path" => {
+            !value.is_empty() && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '/' || c == '.' || c == '-' || c == '_')
+        }
+        "permissive" => true,
+        _ => false,
+    }
+}
+
+pub fn is_host_allowed_for_tool(host: &str, resolved_host: Option<&str>, allow_hosts: &[String]) -> bool {
+    if allow_hosts.is_empty() {
+        return true;
+    }
+    let host_lower = host.to_lowercase();
+    let resolved_lower = resolved_host.map(|s| s.to_lowercase());
+
+    for pattern_str in allow_hosts {
+        let pattern_lower = pattern_str.to_lowercase();
+        if let Ok(pattern) = glob::Pattern::new(&pattern_lower) {
+            if pattern.matches(&host_lower) {
+                return true;
+            }
+            if resolved_lower
+                .as_ref()
+                .is_some_and(|res_host| pattern.matches(res_host))
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+pub fn load_config_from_str(content: &str) -> Result<Config> {
+    let config: Config = toml::from_str(content)
+        .context("Failed to parse TOML configuration")?;
+    config.validate().context("Configuration validation failed")?;
+    Ok(config)
+}
+
+pub fn load_config() -> Config {
+    let path = match home::home_dir() {
+        Some(home_dir) => home_dir.join(".config").join("agentic_ssh").join("config.toml"),
+        None => return Config::default(),
+    };
+
+    if !path.exists() {
+        return Config::default();
+    }
+
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Error reading config file {:?}: {}", path, e);
+            std::process::exit(1);
+        }
+    };
+
+    match load_config_from_str(&content) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            eprintln!("Configuration error in {:?}: {}", path, e);
+            std::process::exit(1);
+        }
+    }
+}
+
 
 pub fn is_host_ignored(host: &str, resolved_host: Option<&str>) -> bool {
     let config = load_config();
@@ -700,4 +929,122 @@ mod tests {
             &allow_list_2
         )); // Blocked by default and by ignore_all
     }
+
+    #[test]
+    fn test_config_parsing_and_validation() {
+        // 1. Valid config with allow_shell = false (Array) and strict parameter validation
+        let content1 = r#"
+            [tools.git_pull]
+            description = "Fetches and merges"
+            command = ["git", "pull", "origin", "{{branch}}"]
+            allow_hosts = ["dev-*"]
+            [tools.git_pull.params.branch]
+            validation = "strict"
+        "#;
+        let cfg1 = load_config_from_str(content1);
+        assert!(cfg1.is_ok());
+        let cfg1 = cfg1.unwrap();
+        assert_eq!(cfg1.tools.len(), 1);
+        let tool = cfg1.tools.get("git_pull").unwrap();
+        assert!(!tool.allow_shell);
+        assert!(matches!(tool.command, CommandTemplate::Array(_)));
+
+        // 2. Mismatch: allow_shell = true but command is Array -> Validation error
+        let content2 = r#"
+            [tools.bad_tool]
+            description = "Mismatched shell flag"
+            command = ["git", "pull"]
+            allow_shell = true
+        "#;
+        let cfg2 = load_config_from_str(content2);
+        assert!(cfg2.is_err());
+        let err_msg = format!("{:#}", cfg2.err().unwrap());
+        assert!(err_msg.contains("allow_shell is true"));
+
+        // 3. Mismatch: allow_shell = false (default) but command is String -> Validation error
+        let content3 = r#"
+            [tools.bad_tool]
+            description = "Mismatched shell flag"
+            command = "git pull"
+            allow_shell = false
+        "#;
+        let cfg3 = load_config_from_str(content3);
+        assert!(cfg3.is_err());
+        let err_msg = format!("{:#}", cfg3.err().unwrap());
+        assert!(err_msg.contains("allow_shell is false"));
+
+        // 4. Missing param definition in params block -> Validation error
+        let content4 = r#"
+            [tools.git_pull]
+            description = "Missing param config"
+            command = ["git", "pull", "{{branch}}"]
+            allow_shell = false
+        "#;
+        let cfg4 = load_config_from_str(content4);
+        assert!(cfg4.is_err());
+        let err_msg = format!("{:#}", cfg4.err().unwrap());
+        assert!(err_msg.contains("parameter 'branch' is used in the command template but not defined in the params block"));
+
+        // 5. Unrecognized validation rule -> Validation error
+        let content5 = r#"
+            [tools.git_pull]
+            description = "Unrecognized validation rule"
+            command = ["git", "pull", "{{branch}}"]
+            [tools.git_pull.params.branch]
+            validation = "super-strict"
+        "#;
+        let cfg5 = load_config_from_str(content5);
+        assert!(cfg5.is_err());
+        let err_msg = format!("{:#}", cfg5.err().unwrap());
+        assert!(err_msg.contains("unrecognized validation type 'super-strict'"));
+    }
+
+    #[test]
+    fn test_parameter_validation_rules() {
+        // strict: pure alphanumeric + hyphens
+        assert!(validate_param_value("main-branch-01", "strict"));
+        assert!(validate_param_value("main", "strict"));
+        assert!(!validate_param_value("main_branch", "strict")); // underscore not allowed in strict
+        assert!(!validate_param_value("main;rm", "strict"));
+        assert!(!validate_param_value("", "strict"));
+
+        // path: alphanumeric plus /, ., -, _
+        assert!(validate_param_value("/var/log/app.log", "path"));
+        assert!(validate_param_value("relative/path/file.txt", "path"));
+        assert!(!validate_param_value("/var/log/app;rm.log", "path"));
+        assert!(!validate_param_value("", "path"));
+
+        // permissive: any
+        assert!(validate_param_value("anything-goes; rm -rf /", "permissive"));
+        assert!(validate_param_value("", "permissive"));
+    }
+
+    #[test]
+    fn test_shell_escaping_and_joining() {
+        let args = vec![
+            "git".to_string(),
+            "commit".to_string(),
+            "-m".to_string(),
+            "hello 'world'; rm -rf /".to_string(),
+        ];
+        let escaped = shell_join(&args);
+        assert_eq!(escaped, r#"'git' 'commit' '-m' 'hello '\''world'\''; rm -rf /'"#);
+    }
+
+    #[test]
+    fn test_host_allowed_for_tool() {
+        let allowed = vec!["dev-*".to_string(), "staging-*".to_string()];
+
+        assert!(is_host_allowed_for_tool("dev-box", None, &allowed));
+        assert!(is_host_allowed_for_tool("staging-server-01", None, &allowed));
+        assert!(!is_host_allowed_for_tool("prod-box", None, &allowed));
+
+        // Resolved hostname match
+        assert!(is_host_allowed_for_tool("my-alias", Some("dev-box-resolved"), &allowed));
+        assert!(!is_host_allowed_for_tool("my-alias", Some("prod-box-resolved"), &allowed));
+
+        // Empty allow_hosts means allowed everywhere
+        assert!(is_host_allowed_for_tool("prod-box", None, &[]));
+    }
 }
+
