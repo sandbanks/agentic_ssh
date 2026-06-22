@@ -65,12 +65,24 @@ impl<'de> serde::Deserialize<'de> for CommandTemplate {
     }
 }
 
-#[derive(serde::Deserialize, Debug, Clone)]
+impl serde::Serialize for CommandTemplate {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            CommandTemplate::Simple(s) => s.serialize(serializer),
+            CommandTemplate::Array(arr) => arr.serialize(serializer),
+        }
+    }
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 pub struct ParamInfo {
     pub validation: String,
 }
 
-#[derive(serde::Deserialize, Debug, Clone)]
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 pub struct PreparedTool {
     pub description: String,
     pub command: CommandTemplate,
@@ -143,7 +155,14 @@ impl PreparedTool {
     }
 }
 
-#[derive(serde::Deserialize, Debug, Default, Clone)]
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
+pub struct LegacyCustomTool {
+    pub name: String,
+    pub description: String,
+    pub command: String,
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Debug, Default, Clone)]
 pub struct Config {
     pub pool_status_path: Option<String>,
     #[serde(default)]
@@ -152,6 +171,8 @@ pub struct Config {
     pub ignore_hosts: Vec<String>,
     #[serde(default, alias = "include_hosts")]
     pub allow_hosts: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub custom_tools: Vec<LegacyCustomTool>,
 }
 
 impl Config {
@@ -273,13 +294,41 @@ pub fn load_config() -> Config {
         }
     };
 
-    match load_config_from_str(&content) {
+    let mut cfg = match load_config_from_str(&content) {
         Ok(cfg) => cfg,
         Err(e) => {
             eprintln!("Configuration error in {:?}: {}", path, e);
             std::process::exit(1);
         }
+    };
+
+    if !cfg.custom_tools.is_empty() {
+        let legacy_tools = std::mem::take(&mut cfg.custom_tools);
+        for custom in legacy_tools {
+            let mut command_str = custom.command.clone();
+            let mut params = HashMap::new();
+            if command_str.contains("{args}") {
+                command_str = command_str.replace("{args}", "{{args}}");
+                params.insert("args".to_string(), ParamInfo { validation: "permissive".to_string() });
+            }
+            cfg.tools.insert(custom.name, PreparedTool {
+                description: custom.description,
+                command: CommandTemplate::Simple(command_str),
+                allow_shell: true,
+                allow_hosts: Vec::new(),
+                params,
+            });
+        }
+
+        // Write the migrated config back to the file
+        if let Ok(toml_string) = toml::to_string_pretty(&cfg) {
+            let _ = std::fs::write(&path, toml_string).map_err(|e| {
+                eprintln!("Warning: failed to write migrated config to {:?}: {}", path, e);
+            });
+        }
     }
+
+    cfg
 }
 
 
@@ -1045,6 +1094,60 @@ mod tests {
 
         // Empty allow_hosts means allowed everywhere
         assert!(is_host_allowed_for_tool("prod-box", None, &[]));
+    }
+
+    #[test]
+    fn test_config_migration() {
+        let legacy_content = r#"
+            pool_status_path = "/path/to/status.json"
+            ignore_hosts = ["ignored-host"]
+            allow_hosts = ["allowed-host"]
+
+            [[custom_tools]]
+            name = "legacy_tool_no_args"
+            description = "Legacy tool without args"
+            command = "uptime"
+
+            [[custom_tools]]
+            name = "legacy_tool_with_args"
+            description = "Legacy tool with args"
+            command = "grep -i '{args}' /var/log/syslog"
+        "#;
+
+        let mut cfg = load_config_from_str(legacy_content).unwrap();
+        assert_eq!(cfg.custom_tools.len(), 2);
+
+        // Perform migration manually since load_config_from_str doesn't mutate/write
+        let legacy_tools = std::mem::take(&mut cfg.custom_tools);
+        for custom in legacy_tools {
+            let mut command_str = custom.command.clone();
+            let mut params = HashMap::new();
+            if command_str.contains("{args}") {
+                command_str = command_str.replace("{args}", "{{args}}");
+                params.insert("args".to_string(), ParamInfo { validation: "permissive".to_string() });
+            }
+            cfg.tools.insert(custom.name, PreparedTool {
+                description: custom.description,
+                command: CommandTemplate::Simple(command_str),
+                allow_shell: true,
+                allow_hosts: Vec::new(),
+                params,
+            });
+        }
+
+        assert_eq!(cfg.custom_tools.len(), 0);
+        assert_eq!(cfg.tools.len(), 2);
+
+        let t1 = cfg.tools.get("legacy_tool_no_args").unwrap();
+        assert!(t1.allow_shell);
+        assert!(matches!(t1.command, CommandTemplate::Simple(_)));
+        assert_eq!(t1.params.len(), 0);
+
+        let t2 = cfg.tools.get("legacy_tool_with_args").unwrap();
+        assert!(t2.allow_shell);
+        assert!(matches!(t2.command, CommandTemplate::Simple(ref s) if s == "grep -i '{{args}}' /var/log/syslog"));
+        assert_eq!(t2.params.len(), 1);
+        assert_eq!(t2.params.get("args").unwrap().validation, "permissive");
     }
 }
 
