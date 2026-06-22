@@ -138,7 +138,7 @@ On macOS, edit `~/Library/Application Support/Claude/claude_desktop_config.json`
 
 ### Configuration Options
 - `pool_status_path` (string): The path to write/read the connection pool status JSON file. Supports absolute paths or tilde expansion (`~/`). Defaults to `~/.agentic_ssh_pool_status.json`.
-- `custom_tools` (array of tables): Defines custom subcommands that dynamically register as first-class MCP tools.
+- `tools` (table): Defines custom parameterized commands that dynamically register as first-class MCP tools.
 - `ignore_hosts` (array of strings): A list of wildcard/glob patterns matching host aliases or resolved hostname destinations that agents should be strictly prevented from listing or connecting to (denylist).
 - `allow_hosts` (array of strings): A list of wildcard/glob patterns (allowlist). If specified and not empty, the agent is strictly restricted *only* to hosts matching these patterns, blocking all others by default. (Also supports the alias `include_hosts`).
 
@@ -156,64 +156,74 @@ ignore_hosts = ["*.prod.company.com", "db-prod", "secure-*"]
 # ignore_hosts = ["*"]
 # allow_hosts = ["*.staging.company.com", "dev-sandbox"]
 
-# Register custom command abbreviations as first-class MCP tools
-[[custom_tools]]
-name = "list_upgradable"
+# Register custom prepared commands as first-class MCP tools
+[tools.list_upgradable]
 description = "List all upgradable packages via apt. USE THIS instead of running apt manually."
-command = "apt list --upgradable"
+command = ["apt", "list", "--upgradable"]
 
-[[custom_tools]]
-name = "grep_syslog"
-description = "Search syslog for a pattern. USE THIS instead of ssh + grep."
-command = "grep -i '{args}' /var/log/syslog"
+[tools.grep_syslog]
+description = "Search syslog for a pattern. USE WITH CAUTION."
+command = "grep -i '{{args}}' /var/log/syslog"
+allow_shell = true
+[tools.grep_syslog.params.args]
+validation = "permissive"
 
-[[custom_tools]]
-name = "check_service_status"
+[tools.check_service_status]
 description = "Check if a system service is running and its status"
-command = "systemctl status {args} 2>/dev/null || service {args} status 2>/dev/null || echo 'Service command not found'"
-#Use case: Use instead of: ssh host "systemctl status nginx"
+command = "systemctl status {{args}} 2>/dev/null || service {{args}} status 2>/dev/null || echo 'Service command not found'"
+allow_shell = true
+[tools.check_service_status.params.args]
+validation = "permissive"
 
-[[custom_tools]]
-name = "find_large_files"
-description = "Find files larger than N MB for disk cleanup. USE THIS instead of ssh + find. Pass size in MB (e.g., find_large_files 100)."
-command = "find / -type f -size +{args}M -exec ls -lh {} + 2>/dev/null | sort -k5 -h | tail -20"
-#Use case: Agent needs to identify space hogs when a disk is full. Call with find_large_files 100 or find_large_files 500.
+[tools.find_large_files]
+description = "Find files larger than N MB for disk cleanup. Pass size in MB (e.g., find_large_files 100)."
+command = "find / -type f -size +{{args}}M -exec ls -lh {} + 2>/dev/null | sort -k5 -h | tail -20"
+allow_shell = true
+[tools.find_large_files.params.args]
+validation = "permissive"
 
-[[custom_tools]]
-name = "list_network_connections"
+[tools.list_network_connections]
 description = "List all active network connections with process info"
-command = "ss -tulnp 2>/dev/null || netstat -tulnp 2>/dev/null"
-#Use case: Agent needs to debug network issues, check what's listening on a port, or identify suspicious connections.
+command = ["ss", "-tulnp"]
 
-[[custom_tools]]
-name = "check_docker_status"
+[tools.check_docker_status]
 description = "Check Docker container statuses"
 command = "docker ps -a --format '{{.Names}}|{{.Status}}|{{.Ports}}' 2>/dev/null"
-#Use case: Agent needs to check the status of Docker containers.
+allow_shell = true
 
-[[custom_tools]]
-name = "list_cron_jobs"
+[tools.list_cron_jobs]
 description = "List all cron jobs for current user and root"
 command = "crontab -l 2>/dev/null; echo '=== ROOT ==='; sudo crontab -l 2>/dev/null"
-#Use case: Agent needs to list cron jobs for current user and root.
+allow_shell = true
 
-[[custom_tools]]
-name = "get_disk_usage"
-description = "Get detailed disk usage for all mount points. USE THIS for full disk info."
-command = "df -kP"
-#Use case: Agent needs detailed disk usage across all filesystems.
+[tools.git_pull]
+description = "Fetches and merges latest changes from branch."
+command = ["git", "-C", "/home/richard/Projects/ldk", "pull", "origin", "{{branch}}"]
+allow_hosts = ["stan"]
+[tools.git_pull.params.branch]
+validation = "strict"
 ```
 
-### Custom Tools / Command Abbreviations
-When you define a table in `custom_tools`, the MCP server dynamically registers it as a first-class tool when the client calls `tools/list`. 
+### Parameterized SSH Tools (SQL-Style Prepared Statements)
+When you define a tool under `[tools]`, the MCP server dynamically registers it as a first-class tool when the client calls `tools/list`. 
+
 Each custom tool automatically supports:
 1. `host` (string, optional): The target SSH host alias. Provide either `host` or `hosts`, but not both.
 2. `hosts` (array of strings, optional): Optional list of SSH host aliases from `~/.ssh/config` to query concurrently.
-3. `args` (string, optional): Optional arguments. If the command template contains `{args}`, the placeholder is replaced by the value of `args`. Otherwise, if `args` is provided, it is appended to the command (separated by a space).
+3. Command parameters: Any parameter placeholders (denoted by double curly braces `{{param_name}}`) defined in the `command` template. These are passed as key-value fields in the tool call arguments and must be defined in the `[tools.name.params]` block.
+
+#### Security & Shell-Injection Defense
+To eliminate shell injection vulnerabilities:
+* **Argument Array Sandboxing**: By default, `allow_shell` is `false` and the command template is defined as an Array of strings. All parameters are evaluated strictly as data arguments, shell-escaped (rendering metacharacters like `;`, `&&`, or `|` inert), and executed directly.
+* **Tiered Parameter Validation**: Before hitting the network, parameters are validated locally in Rust using three rules:
+  - `strict`: Enforces pure alphanumeric + hyphens (perfect for branch names, docker tags, and service names).
+  - `path`: Enforces alphanumeric plus safe path characters (`/`, `.`, `-`, `_`).
+  - `permissive`: Bypasses character checks for trusted or complex payloads.
+* **Explicit Shell Escape Hatch (`allow_shell = true`)**: If you explicitly need shell features (such as pipes or redirection), set `allow_shell = true` and define `command` as a single String.
 
 If `hosts` is used, the custom tool executes concurrently on all specified hosts and returns a JSON map mapping each host to its result status and output data.
 
-This allows developers to extend the MCP server without writing Rust code, simplifying agent usage and saving prompt tokens.
+This allows developers to extend the MCP server safely without writing Rust code, simplifying agent usage and saving prompt tokens.
 
 ### Environment Overrides
 For development or automated setups, you can override settings using environment variables, which take precedence over the configuration file:
