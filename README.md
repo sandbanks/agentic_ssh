@@ -15,6 +15,7 @@ It also supports output abbreviation, which helps save tokens by truncating extr
 - **Auto-Cleanup**: Closes pooled connections after 5 minutes of inactivity to conserve resource usage.
 - **Key-Based Authentication**: Seamlessly authenticates using the `IdentityFile` paths configured in your SSH config, falling back to standard default keys (`~/.ssh/id_rsa`, `~/.ssh/id_ed25519`, etc.).
 - **Token Saving / Output Abbreviation**: Offers an option to truncate large stdout outputs (e.g., keeping only the first and last $N$ lines, with a truncation notice in the middle).
+- **Zero-Quoting Headaches**: Structured argument lists (`allow_shell = false`) are automatically escaped and joined behind the scenes, completely eliminating the painful double/triple shell escaping normally required when running remote commands via `ssh host "command"`.
 - **High Performance**: Built with async Rust ([tokio](https://crates.io/crates/tokio) & [russh](https://crates.io/crates/russh)) and utilizes the `mimalloc` allocator.
 
 ---
@@ -220,6 +221,7 @@ To eliminate shell injection vulnerabilities:
   - `path`: Enforces alphanumeric plus safe path characters (`/`, `.`, `-`, `_`).
   - `permissive`: Bypasses character checks for trusted or complex payloads.
 * **Explicit Shell Escape Hatch (`allow_shell = true`)**: If you explicitly need shell features (such as pipes or redirection), set `allow_shell = true` and define `command` as a single String.
+* **Zero-Quoting Headaches**: Executing commands over standard SSH command line (`ssh host "command"`) is notoriously painful due to double-evaluation (first by the local shell, then by the remote login shell). Because parameters are passed via clean JSON-RPC arguments, `agentic_ssh` automatically quotes and escapes parameters behind the scenes, sparing you and your agent from command-escaping hell.
 
 If `hosts` is used, the custom tool executes concurrently on all specified hosts and returns a JSON map mapping each host to its result status and output data.
 
