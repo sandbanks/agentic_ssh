@@ -1,6 +1,6 @@
 [package]
 name = "agentic_ssh"
-version = "0.2.6"
+version = "0.2.7"
 edition = "2024"
 description = "A minimalist, secure engineering primitive for agentic SSH execution loops."
 license = "MIT OR Apache-2.0"
@@ -28,7 +28,7 @@ tempfile = "3"
 [package.metadata.binstall]
 # Maps perfectly to your workflow's archive output structure
 pkg-url = "https://github.com/sandbanks/agentic_ssh/releases/download/v{version}/agentic_ssh-v{version}-{target}.{archive-format}"
-pkg-fmt = "Tgz"
+pkg-fmt = "tgz"
 
 [package.metadata.binstall.formats]
 # This tells binstall to map your custom cross-compilation names to your tarballs
