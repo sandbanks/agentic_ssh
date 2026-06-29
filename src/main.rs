@@ -1,5 +1,5 @@
 use mimalloc::MiMalloc;
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -8,6 +8,7 @@ mod agents;
 mod doctor;
 mod errors;
 mod mcp_server;
+mod security;
 mod ssh_config;
 mod ssh_pool;
 
@@ -63,12 +64,26 @@ impl AgentOption {
 #[command(version)]
 #[command(about = "agentic_ssh - SSH connection pooling & MCP server for AI agents", long_about = None)]
 struct Cli {
+    /// Explicit override path to a configuration file
+    #[arg(long, value_name = "FILE")]
+    config: Option<PathBuf>,
+
+    /// Ignore the global configuration baseline entirely
+    #[arg(long)]
+    no_global: bool,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Cryptographically sign and trust a project-local configuration file (Human-only)
+    Trust {
+        /// Path to the local .agentic_ssh.toml file to trust
+        #[arg(default_value = "./.agentic_ssh.toml")]
+        path: PathBuf,
+    },
     /// Start the live TUI connection pool dashboard
     Tui,
     /// Start the MCP server (default)
@@ -105,12 +120,33 @@ enum Commands {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
+    // Store CLI overrides globally
+    let _ = crate::ssh_pool::CLI_OVERRIDE.set(crate::ssh_pool::CliOverride {
+        config_path: cli.config.clone(),
+        no_global: cli.no_global,
+    });
+
+    // GUARDRAIL 1: Protect explicit config override paths and trust commands from agent injection
+    if cli.config.is_some() || cli.no_global || matches!(cli.command, Some(Commands::Trust { .. }))
+    {
+        // Force the /dev/tty human check before parsing an explicit configuration string
+        if let Err(e) = security::enforce_human_interaction() {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        }
+    }
+
     let skip_auto_install = matches!(cli.command, Some(Commands::Uninstall { .. }));
     if !skip_auto_install {
         let _ = auto_install_if_needed();
     }
 
     match cli.command {
+        Some(Commands::Trust { path }) => {
+            security::trust_local_config(&path)?;
+            println!("🔒 Local file successfully trusted and registered in your global ledger.");
+        }
+
         Some(Commands::Tui) => {
             run_tui()?;
         }

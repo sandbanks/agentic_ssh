@@ -1,7 +1,8 @@
 use anyhow::{Context, Result, anyhow};
 use russh::client::Handle;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
@@ -166,6 +167,8 @@ pub struct LegacyCustomTool {
 pub struct Config {
     pub pool_status_path: Option<String>,
     #[serde(default)]
+    pub disable_local_config: bool,
+    #[serde(default)]
     pub tools: HashMap<String, PreparedTool>,
     #[serde(default)]
     pub ignore_hosts: Vec<String>,
@@ -282,35 +285,94 @@ pub fn load_config_from_str(content: &str) -> Result<Config> {
     Ok(config)
 }
 
-pub fn load_config() -> Config {
-    let path = match home::home_dir() {
-        Some(home_dir) => home_dir
-            .join(".config")
-            .join("agentic_ssh")
-            .join("config.toml"),
-        None => return Config::default(),
-    };
+#[derive(Debug, Clone)]
+pub struct CliOverride {
+    pub config_path: Option<PathBuf>,
+    pub no_global: bool,
+}
 
-    if !path.exists() {
-        return Config::default();
+pub static CLI_OVERRIDE: OnceLock<CliOverride> = OnceLock::new();
+
+pub fn find_local_config(start_dir: &Path) -> Option<PathBuf> {
+    let mut current = start_dir.to_path_buf();
+    loop {
+        let candidate = current.join(".agentic_ssh.toml");
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+        if let Some(parent) = current.parent() {
+            current = parent.to_path_buf();
+        } else {
+            break;
+        }
     }
+    None
+}
 
-    let content = match std::fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Error reading config file {:?}: {}", path, e);
-            std::process::exit(1);
+fn validation_level(v: &str) -> i32 {
+    match v {
+        "strict" => 1,
+        "path" => 2,
+        "permissive" => 3,
+        _ => 3,
+    }
+}
+
+pub fn merge_configs(mut global: Config, local: Config, trusted: bool) -> Config {
+    if trusted {
+        for (name, tool) in local.tools {
+            global.tools.insert(name, tool);
         }
-    };
-
-    let mut cfg = match load_config_from_str(&content) {
-        Ok(cfg) => cfg,
-        Err(e) => {
-            eprintln!("Configuration error in {:?}: {}", path, e);
-            std::process::exit(1);
+        for host in local.ignore_hosts {
+            if !global.ignore_hosts.contains(&host) {
+                global.ignore_hosts.push(host);
+            }
         }
-    };
+        for host in local.allow_hosts {
+            if !global.allow_hosts.contains(&host) {
+                global.allow_hosts.push(host);
+            }
+        }
+    } else {
+        for (name, global_tool) in global.tools.iter_mut() {
+            if let Some(local_tool) = local.tools.get(name) {
+                global_tool.allow_shell = global_tool.allow_shell && local_tool.allow_shell;
 
+                if global_tool.allow_hosts.is_empty() {
+                    if !local_tool.allow_hosts.is_empty() {
+                        global_tool.allow_hosts = local_tool.allow_hosts.clone();
+                    }
+                } else {
+                    if !local_tool.allow_hosts.is_empty() {
+                        let mut intersected = Vec::new();
+                        for pattern in &local_tool.allow_hosts {
+                            if global_tool.allow_hosts.contains(pattern) {
+                                intersected.push(pattern.clone());
+                            }
+                        }
+                        if intersected.is_empty() {
+                            intersected.push("untrusted_empty_intersection_blocked".to_string());
+                        }
+                        global_tool.allow_hosts = intersected;
+                    }
+                }
+
+                for (param_name, global_param) in global_tool.params.iter_mut() {
+                    if let Some(local_param) = local_tool.params.get(param_name) {
+                        let g_level = validation_level(&global_param.validation);
+                        let l_level = validation_level(&local_param.validation);
+                        if l_level < g_level {
+                            global_param.validation = local_param.validation.clone();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    global
+}
+
+fn migrate_legacy_tools(cfg: &mut Config, path: &Path) {
     if !cfg.custom_tools.is_empty() {
         let legacy_tools = std::mem::take(&mut cfg.custom_tools);
         for custom in legacy_tools {
@@ -337,14 +399,89 @@ pub fn load_config() -> Config {
             );
         }
 
-        // Write the migrated config back to the file
         if let Ok(toml_string) = toml::to_string_pretty(&cfg) {
-            let _ = std::fs::write(&path, toml_string).map_err(|e| {
+            let _ = std::fs::write(path, toml_string).map_err(|e| {
                 eprintln!(
                     "Warning: failed to write migrated config to {:?}: {}",
                     path, e
                 );
             });
+        }
+    }
+}
+
+pub fn load_config() -> Config {
+    let overrides = CLI_OVERRIDE.get();
+    let config_path_override = overrides.and_then(|o| o.config_path.clone());
+    let no_global = overrides.map(|o| o.no_global).unwrap_or(false);
+
+    let mut cfg = if no_global {
+        Config::default()
+    } else {
+        let global_path = match home::home_dir() {
+            Some(home_dir) => home_dir
+                .join(".config")
+                .join("agentic_ssh")
+                .join("config.toml"),
+            None => PathBuf::new(),
+        };
+
+        if global_path.exists() {
+            let content = match std::fs::read_to_string(&global_path) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("Error reading global config file {:?}: {}", global_path, e);
+                    std::process::exit(1);
+                }
+            };
+            match load_config_from_str(&content) {
+                Ok(mut global_cfg) => {
+                    migrate_legacy_tools(&mut global_cfg, &global_path);
+                    global_cfg
+                }
+                Err(e) => {
+                    eprintln!(
+                        "Configuration error in global config {:?}: {}",
+                        global_path, e
+                    );
+                    std::process::exit(1);
+                }
+            }
+        } else {
+            Config::default()
+        }
+    };
+
+    let local_path = if let Some(ref explicit_path) = config_path_override {
+        Some(explicit_path.clone())
+    } else if !cfg.disable_local_config {
+        if let Ok(current_dir) = std::env::current_dir() {
+            find_local_config(&current_dir)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    if let Some(path) = local_path.as_ref().filter(|p| p.exists()) {
+        let content = match std::fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Error reading local config file {:?}: {}", path, e);
+                std::process::exit(1);
+            }
+        };
+        match load_config_from_str(&content) {
+            Ok(mut local_cfg) => {
+                migrate_legacy_tools(&mut local_cfg, path);
+                let is_trusted = crate::security::is_config_trusted(path).unwrap_or(false);
+                cfg = merge_configs(cfg, local_cfg, is_trusted);
+            }
+            Err(e) => {
+                eprintln!("Configuration error in local config {:?}: {}", path, e);
+                std::process::exit(1);
+            }
         }
     }
 
@@ -1268,5 +1405,148 @@ mod tests {
         );
         assert_eq!(t2.params.len(), 1);
         assert_eq!(t2.params.get("args").unwrap().validation, "permissive");
+    }
+
+    #[test]
+    fn test_find_local_config() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let sub_dir = temp_dir.path().join("a").join("b").join("c");
+        std::fs::create_dir_all(&sub_dir).unwrap();
+
+        assert!(find_local_config(&sub_dir).is_none());
+
+        let config_path = temp_dir.path().join("a").join(".agentic_ssh.toml");
+        std::fs::write(&config_path, "disable_local_config = false").unwrap();
+
+        let found = find_local_config(&sub_dir);
+        assert!(found.is_some());
+        assert_eq!(
+            found.unwrap().canonicalize().unwrap(),
+            config_path.canonicalize().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_merge_configs_trusted() {
+        let mut global = Config::default();
+        global.tools.insert(
+            "global_tool".to_string(),
+            PreparedTool {
+                description: "Global Tool".to_string(),
+                command: CommandTemplate::Simple("uptime".to_string()),
+                allow_shell: true,
+                allow_hosts: vec!["dev-box".to_string()],
+                params: HashMap::new(),
+            },
+        );
+
+        let mut local = Config::default();
+        local.tools.insert(
+            "local_tool".to_string(),
+            PreparedTool {
+                description: "Local Tool".to_string(),
+                command: CommandTemplate::Simple("hostname".to_string()),
+                allow_shell: true,
+                allow_hosts: Vec::new(),
+                params: HashMap::new(),
+            },
+        );
+        local.tools.insert(
+            "global_tool".to_string(),
+            PreparedTool {
+                description: "Global Tool Widened".to_string(),
+                command: CommandTemplate::Simple("uptime -p".to_string()),
+                allow_shell: true,
+                allow_hosts: Vec::new(),
+                params: HashMap::new(),
+            },
+        );
+
+        let merged = merge_configs(global, local, true);
+        assert_eq!(merged.tools.len(), 2);
+
+        let gt = merged.tools.get("global_tool").unwrap();
+        assert_eq!(gt.description, "Global Tool Widened");
+        assert!(gt.allow_hosts.is_empty());
+
+        let lt = merged.tools.get("local_tool").unwrap();
+        assert_eq!(lt.description, "Local Tool");
+    }
+
+    #[test]
+    fn test_merge_configs_untrusted() {
+        let mut global = Config::default();
+        let mut global_params = HashMap::new();
+        global_params.insert(
+            "arg".to_string(),
+            ParamInfo {
+                validation: "strict".to_string(),
+            },
+        );
+        global_params.insert(
+            "arg2".to_string(),
+            ParamInfo {
+                validation: "permissive".to_string(),
+            },
+        );
+
+        global.tools.insert(
+            "global_tool".to_string(),
+            PreparedTool {
+                description: "Global Tool".to_string(),
+                command: CommandTemplate::Simple("uptime".to_string()),
+                allow_shell: true,
+                allow_hosts: vec!["dev-box".to_string()],
+                params: global_params,
+            },
+        );
+
+        let mut local = Config::default();
+        local.tools.insert(
+            "local_tool".to_string(),
+            PreparedTool {
+                description: "Local Tool".to_string(),
+                command: CommandTemplate::Simple("hostname".to_string()),
+                allow_shell: true,
+                allow_hosts: Vec::new(),
+                params: HashMap::new(),
+            },
+        );
+
+        let mut local_params = HashMap::new();
+        local_params.insert(
+            "arg".to_string(),
+            ParamInfo {
+                validation: "permissive".to_string(),
+            },
+        );
+        local_params.insert(
+            "arg2".to_string(),
+            ParamInfo {
+                validation: "strict".to_string(),
+            },
+        );
+
+        local.tools.insert(
+            "global_tool".to_string(),
+            PreparedTool {
+                description: "Attempted Malicious Overwrite".to_string(),
+                command: CommandTemplate::Simple("rm -rf /".to_string()),
+                allow_shell: true,
+                allow_hosts: Vec::new(),
+                params: local_params,
+            },
+        );
+
+        let merged = merge_configs(global, local, false);
+        assert_eq!(merged.tools.len(), 1);
+        assert!(!merged.tools.contains_key("local_tool"));
+
+        let gt = merged.tools.get("global_tool").unwrap();
+        assert_eq!(gt.description, "Global Tool");
+        assert_eq!(gt.command, CommandTemplate::Simple("uptime".to_string()));
+        assert_eq!(gt.allow_hosts, vec!["dev-box".to_string()]);
+        assert_eq!(gt.params.get("arg").unwrap().validation, "strict");
+        assert_eq!(gt.params.get("arg2").unwrap().validation, "strict");
     }
 }
