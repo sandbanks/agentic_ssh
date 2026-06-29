@@ -241,6 +241,18 @@ impl McpServer {
                                     "max_lines": {
                                         "type": "integer",
                                         "description": "Maximum lines of stdout to retain when abbreviate is true (default: 100)"
+                                    },
+                                    "quiet": {
+                                        "type": "boolean",
+                                        "description": "If true (default), print periodic progress updates to local stderr. If false, stream all remote stdout/stderr to local stderr in real time."
+                                    },
+                                    "progress_interval_secs": {
+                                        "type": "integer",
+                                        "description": "The interval (in seconds) at which progress updates are printed to local stderr when quiet is true (default: 5)"
+                                    },
+                                    "background": {
+                                        "type": "boolean",
+                                        "description": "If true, execute the command asynchronously in the background and return the log file path immediately. Defaults to false."
                                     }
                                 },
                                 "required": ["command"]
@@ -625,8 +637,15 @@ impl McpServer {
                     let cmd_to_run = cmd_to_run.clone();
                     let name = name.clone();
                     async move {
-                        let (stdout, stderr, exit_code) =
-                            pool.execute_command(&host, &cmd_to_run).await?;
+                        let (stdout, stderr, exit_code) = pool
+                            .execute_command(
+                                &host,
+                                &cmd_to_run,
+                                true,
+                                5,
+                                std::env::temp_dir().join("agentic_ssh_temp.log"),
+                            )
+                            .await?;
                         if exit_code != 0 {
                             anyhow::bail!(
                                 "Error executing custom tool '{}' (exit code {}):\n{}",
@@ -712,8 +731,15 @@ impl McpServer {
                         let pool = pool.clone();
                         async move {
                             let cmd = "echo '=== LOAD ===' && (cat /proc/loadavg 2>/dev/null || uptime) && echo '=== MEM ===' && (cat /proc/meminfo 2>/dev/null || free -k 2>/dev/null) && echo '=== DISK ===' && df -kP /";
-                            let (stdout, stderr, exit_code) =
-                                pool.execute_command(&host, cmd).await?;
+                            let (stdout, stderr, exit_code) = pool
+                                .execute_command(
+                                    &host,
+                                    cmd,
+                                    true,
+                                    5,
+                                    std::env::temp_dir().join("agentic_ssh_temp.log"),
+                                )
+                                .await?;
                             if exit_code != 0 {
                                 anyhow::bail!(
                                     "Error executing stats command (exit code {}):\n{}",
@@ -764,8 +790,15 @@ impl McpServer {
                         let pool = pool.clone();
                         async move {
                             let cmd = "ss -tulpn 2>/dev/null || ss -tuln 2>/dev/null || netstat -tulpn 2>/dev/null || netstat -tuln 2>/dev/null";
-                            let (stdout, stderr, exit_code) =
-                                pool.execute_command(&host, cmd).await?;
+                            let (stdout, stderr, exit_code) = pool
+                                .execute_command(
+                                    &host,
+                                    cmd,
+                                    true,
+                                    5,
+                                    std::env::temp_dir().join("agentic_ssh_temp.log"),
+                                )
+                                .await?;
                             if exit_code != 0 {
                                 anyhow::bail!(
                                     "Error executing ports command (exit code {}):\n{}",
@@ -821,6 +854,21 @@ impl McpServer {
                     .map(|n| n as usize)
                     .unwrap_or(100);
 
+                let quiet = arguments
+                    .get("quiet")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+
+                let progress_interval_secs = arguments
+                    .get("progress_interval_secs")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(5);
+
+                let background = arguments
+                    .get("background")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+
                 let run_cmd = {
                     let pool = self.pool.clone();
                     let command = command.to_string();
@@ -828,8 +876,58 @@ impl McpServer {
                         let pool = pool.clone();
                         let command = command.clone();
                         async move {
-                            let (stdout, stderr, exit_code) =
-                                pool.execute_command(&host, &command).await?;
+                            let sessions_dir = home::home_dir()
+                                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                                .join(".agentic_ssh")
+                                .join("sessions");
+                            std::fs::create_dir_all(&sessions_dir).ok();
+
+                            let now_str = chrono::Local::now().format("%Y%m%d_%H%M").to_string();
+                            let nano_rand = std::time::SystemTime::now()
+                                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_nanos();
+                            let rand_hex = format!("{:04x}", nano_rand & 0xffff);
+                            let log_file_name =
+                                format!("job_{}_{}_{}.log", now_str, host, rand_hex);
+                            let log_path = sessions_dir.join(&log_file_name);
+
+                            if background {
+                                let pool_clone = pool.clone();
+                                let host_clone = host.clone();
+                                let command_clone = command.clone();
+                                let log_path_clone = log_path.clone();
+                                tokio::spawn(async move {
+                                    let _ = pool_clone
+                                        .execute_command(
+                                            &host_clone,
+                                            &command_clone,
+                                            quiet,
+                                            progress_interval_secs,
+                                            log_path_clone,
+                                        )
+                                        .await;
+                                });
+
+                                return Ok(serde_json::json!({
+                                    "status": "started",
+                                    "log_path": log_path.to_string_lossy().to_string(),
+                                    "message": format!(
+                                        "🚀 Command started in background. To watch live progress, run:\n  tail -f {}",
+                                        log_path.to_string_lossy()
+                                    )
+                                }));
+                            }
+
+                            let (stdout, stderr, exit_code) = pool
+                                .execute_command(
+                                    &host,
+                                    &command,
+                                    quiet,
+                                    progress_interval_secs,
+                                    log_path,
+                                )
+                                .await?;
                             let stdout_final = if abbreviate {
                                 abbreviate_output(&stdout, max_lines)
                             } else {
@@ -895,7 +993,13 @@ impl McpServer {
                         async move {
                             // POSIX-standard process listing
                             let (stdout, stderr, exit_code) = pool
-                                .execute_command(&host, "ps -eo pid,user,%cpu,%mem,args")
+                                .execute_command(
+                                    &host,
+                                    "ps -eo pid,user,%cpu,%mem,args",
+                                    true,
+                                    5,
+                                    std::env::temp_dir().join("agentic_ssh_temp.log"),
+                                )
                                 .await?;
                             if exit_code != 0 {
                                 anyhow::bail!(
@@ -996,8 +1100,15 @@ impl McpServer {
                         let file_path = file_path.clone();
                         async move {
                             let command = format!("tail -n {} {}", lines, file_path);
-                            let (stdout, stderr, exit_code) =
-                                pool.execute_command(&host, &command).await?;
+                            let (stdout, stderr, exit_code) = pool
+                                .execute_command(
+                                    &host,
+                                    &command,
+                                    true,
+                                    5,
+                                    std::env::temp_dir().join("agentic_ssh_temp.log"),
+                                )
+                                .await?;
                             if exit_code != 0 {
                                 anyhow::bail!(
                                     "Error tailing file (exit code {}):\n{}",
@@ -1061,8 +1172,15 @@ impl McpServer {
                             let ts_flag = if timestamps { "-t" } else { "" };
                             let command =
                                 format!("docker logs --tail {} {} {}", lines, ts_flag, container);
-                            let (stdout, stderr, exit_code) =
-                                pool.execute_command(&host, &command).await?;
+                            let (stdout, stderr, exit_code) = pool
+                                .execute_command(
+                                    &host,
+                                    &command,
+                                    true,
+                                    5,
+                                    std::env::temp_dir().join("agentic_ssh_temp.log"),
+                                )
+                                .await?;
                             if exit_code != 0 {
                                 anyhow::bail!(
                                     "Error fetching container logs (exit code {}):\n{}",

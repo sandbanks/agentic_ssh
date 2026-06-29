@@ -721,7 +721,11 @@ impl ConnectionPool {
             .next()
             .ok_or_else(|| anyhow!("Could not resolve host: {}", real_host))?;
 
-        let config = Arc::new(russh::client::Config::default());
+        let config = Arc::new(russh::client::Config {
+            keepalive_interval: Some(Duration::from_secs(30)),
+            keepalive_max: 3,
+            ..Default::default()
+        });
         let mut handle = russh::client::connect(config, socket_addr, ClientHandler)
             .await
             .context("Failed to connect via TCP/SSH")?;
@@ -825,6 +829,9 @@ impl ConnectionPool {
         &self,
         host: &str,
         command: &str,
+        quiet: bool,
+        progress_interval_secs: u64,
+        log_path: std::path::PathBuf,
     ) -> Result<(String, String, u32)> {
         let handle = self.get_connection(host).await?;
         let _guard = self.start_operation(host).await;
@@ -844,21 +851,82 @@ impl ConnectionPool {
         let mut stderr = Vec::new();
         let mut exit_code = 0;
 
+        // Open progress log file
+        use tokio::io::AsyncWriteExt;
+        let mut log_file = tokio::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&log_path)
+            .await
+            .ok();
+
+        if let Some(ref mut f) = log_file {
+            let header = format!("--- Executing command on {}: {:?} ---\n", host, command);
+            let _ = f.write_all(header.as_bytes()).await;
+            let _ = f.flush().await;
+        }
+
+        let start_time = Instant::now();
+        // If quiet is false, we don't tick, so set first tick to 100 years in the future
+        let mut next_tick = if quiet {
+            start_time + Duration::from_secs(5)
+        } else {
+            start_time + Duration::from_secs(3600 * 24 * 365 * 100)
+        };
+
         loop {
-            match channel.wait().await {
-                Some(russh::ChannelMsg::Data { data }) => {
-                    stdout.extend_from_slice(&data);
-                }
-                Some(russh::ChannelMsg::ExtendedData { data, ext }) => {
-                    if ext == 1 {
-                        stderr.extend_from_slice(&data);
+            tokio::select! {
+                msg = channel.wait() => {
+                    match msg {
+                        Some(russh::ChannelMsg::Data { data }) => {
+                            stdout.extend_from_slice(&data);
+                            if !quiet {
+                                let _ = tokio::io::stderr().write_all(&data).await;
+                                let _ = tokio::io::stderr().flush().await;
+                                if let Some(ref mut f) = log_file {
+                                    let _ = f.write_all(&data).await;
+                                    let _ = f.flush().await;
+                                }
+                            }
+                        }
+                        Some(russh::ChannelMsg::ExtendedData { data, ext }) => {
+                            if ext == 1 {
+                                stderr.extend_from_slice(&data);
+                                if !quiet {
+                                    let _ = tokio::io::stderr().write_all(&data).await;
+                                    let _ = tokio::io::stderr().flush().await;
+                                    if let Some(ref mut f) = log_file {
+                                        let _ = f.write_all(&data).await;
+                                        let _ = f.flush().await;
+                                    }
+                                }
+                            }
+                        }
+                        Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
+                            exit_code = exit_status;
+                        }
+                        None => break,
+                        _ => {}
                     }
                 }
-                Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
-                    exit_code = exit_status;
+                _ = tokio::time::sleep_until(tokio::time::Instant::from_std(next_tick)) => {
+                    if quiet {
+                        let elapsed = start_time.elapsed();
+                        let total_kb = (stdout.len() + stderr.len()) / 1024;
+                        let msg = format!(
+                            "[agentic_ssh] -> [Progress: {}KB read from streams...] (elapsed: {}s)\n",
+                            total_kb,
+                            elapsed.as_secs()
+                        );
+                        eprint!("{}", msg);
+                        if let Some(ref mut f) = log_file {
+                            let _ = f.write_all(msg.as_bytes()).await;
+                            let _ = f.flush().await;
+                        }
+                    }
+                    next_tick = Instant::now() + Duration::from_secs(progress_interval_secs);
                 }
-                None => break,
-                _ => {}
             }
         }
 
@@ -883,6 +951,9 @@ mod tests {
             .execute_command(
                 "fred-direct-with-more-words-than-you-need-to-test-with",
                 "uptime && docker ps",
+                true,
+                5,
+                std::path::PathBuf::from("/tmp/test.log"),
             )
             .await
         {

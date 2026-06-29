@@ -1,8 +1,8 @@
 [package]
 name = "agentic_ssh"
-version = "0.2.7"
+version = "0.2.8"
 edition = "2024"
-description = "A minimalist, secure engineering primitive for agentic SSH execution loops."
+description = "A minimalist, secure engineering primitive for agentic SSH execution and detached background operations."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/sandbanks/agentic_ssh"
 homepage = "https://github.com/sandbanks/agentic_ssh"
@@ -22,6 +22,7 @@ async-trait = "0.1"
 toml = "1.0"
 regex = "1"
 clap = { version = "4", features = ["derive"] }
+chrono = "0.4"
 [dev-dependencies]
 tempfile = "3"
 
