@@ -122,6 +122,19 @@ All built-in diagnostic primitives are pre-configured to handle background track
 
 ---
 
+## Writing Agent-Friendly Tool Descriptions
+
+When declaring custom tools inside your configurations, writing high-quality `description` strings is critical. While humans rely on context and intuition, AI agents interpret these descriptions literally to decide when, why, and how to invoke a tool.
+
+To write effective tool descriptions, follow these five core design pillars:
+* **Action Verbs First**: Always lead with explicit actions (e.g., `"Fetches"`, `"Runs"`, `"Deploys"`).
+* **Describe Mechanics, Not Just Intent**: Focus on the concrete command execution details (e.g., `"Runs cargo test"` vs. `"Checks code"`).
+* **State Explicit Constraints**: Clearly document prerequisites and failure conditions (e.g., `"Requires sudo"`, `"Fails if git status is dirty"`).
+* **Loud Warnings for High-Blast-Radius Actions**: Use uppercase words to signal critical risk parameters (e.g., `"DANGEROUS: Forcefully terminates process"`, `"CRITICAL: Modifies remote state"`).
+* **Define Return Format Expectations**: Detail exactly what output telemetry data the agent should expect (e.g., `"Returns plain text"`, `"Returns systemd status summary"`).
+
+---
+
 ## Advanced Configuration Overrides
 
 Customize matching rule engines or specify layout configurations globally using an optional TOML asset located at `~/.config/agentic_ssh/config.toml`:
@@ -154,6 +167,12 @@ Inspect connection pool tracking states, idle intervals, and active time-to-live
 agentic_ssh tui
 
 ```
+
+## Acknowledgments
+
+*Standing on the shoulders of giants...*
+
+- **Enzo** - MCP server installation code from tokensave
 
 ### License
 

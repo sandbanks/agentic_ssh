@@ -1,0 +1,39 @@
+# agentic_ssh.toml.example
+#
+# Reference configuration file blueprint for project-local configurations (.agentic_ssh.toml).
+# To activate a local config, copy this to your project root as `.agentic_ssh.toml` and configure it.
+#
+# ---------------------------------------------------------------------------------
+# 💡 AGENT-FRIENDLY DESCRIPTION CHEAT SHEET
+#
+# # ❌ BAD: description = "Checks the logs"
+# # ✅ GOOD: description = "Fetches the last 100 lines of /var/log/app.log via tail. Returns plain text."
+# ---------------------------------------------------------------------------------
+
+# Global configuration flags (optional)
+# disable_local_config = false
+
+# Custom parameterized tools injected directly into the agent's workspace toolkit.
+[tools.git_pull]
+description = "Fetches and merges the latest git commits from an explicit remote branch target. Returns git command output."
+command = ["git", "-C", "/home/richard/Projects/ldk", "pull", "origin", "{{branch}}"]
+allow_hosts = ["stan"]
+allow_shell = false
+
+[tools.git_pull.params.branch]
+validation = "strict" # Restricts inputs strictly to safe alphanumeric branch names and hyphens
+
+[tools.check_service]
+description = "Checks the execution state of system services. Runs systemctl status for a service. Returns a systemd status summary."
+command = ["systemctl", "status", "{{service}}"]
+allow_hosts = ["stan", "delight", "*.local"]
+allow_shell = false
+
+[tools.check_service.params.service]
+validation = "strict" # Requires a strict service name (e.g. nginx, docker) to protect against injection
+
+[tools.server_reboot]
+description = "DANGEROUS: Forcefully reboots target environment via reboot command. Returns reboot initiation status."
+command = ["sudo", "reboot"]
+allow_hosts = ["stan"]
+allow_shell = false

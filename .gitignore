@@ -6,3 +6,5 @@
 /target
 /pool_status.json
 .idea
+
+issue*.md
