@@ -86,7 +86,7 @@ jobs:
 
       - name: Upload bottle artifact
         if: matrix.bottle_tag && github.event_name == 'release'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bottle-${{ matrix.bottle_tag }}
           path: "agentic_ssh-*.bottle.tar.gz"
@@ -147,6 +147,9 @@ jobs:
           X86_64_LINUX_SHA="${{ steps.hashes.outputs.x86_64_linux_sha }}"
 
           git clone "https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/sandbanks/homebrew-tap.git" tap
+
+          # Ensure Formula directory exists
+          mkdir -p tap/Formula
 
           cat > tap/Formula/agentic_ssh.rb << EOF
           class AgenticSsh < Formula
