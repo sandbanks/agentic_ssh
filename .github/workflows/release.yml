@@ -93,7 +93,7 @@ jobs:
 
   update-homebrew:
     name: Update Homebrew tap
-    if: github.event_name == 'release' && !github.event.release.prerelease && !cancelled()
+    if: github.event_name == 'release' && !github.event.release.prerelease
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -184,7 +184,7 @@ jobs:
   publish-crate:
     name: Publish to crates.io
     if: github.event_name == 'release' && !github.event.release.prerelease
-    # needs: build
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
