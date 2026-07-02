@@ -10,17 +10,6 @@ Unlike generic terminal tools that block agent execution or flood context window
 
 ---
 
-## High-Leverage Features
-
-* **Asynchronous Background Orchestration (`background: true`)**: Instantly hands control back to the agent runner when long-running scripts (such as massive Nix setups, system updates, or heavy compilation tasks) are fired. The agent is immediately freed to process other workflows concurrently while the remote task crunches in the background.
-* **Token-Efficient Session Telemetry**: Completely routes around agent frameworks that swallow local `stderr`. Long jobs stream progress to unique, self-cleaning session log files (`~/.agentic_ssh/sessions/*.log`), preventing concurrent agent instances from clobbering each other's outputs.
-* **Smart Progress Tickers (`quiet: true`)**: Keeps human terminal dashboards updated via a configurable time-interval progress loop without transferring a single line of raw compilation text over the internet, saving massive amounts of LLM context tokens.
-* **Hardened Connection Heartbeats**: Automatically configures `russh` keepalives to ping remote environments every 30 seconds, preventing intermediate overlays (like Tailscale, cloud virtual routers, or firewalls) from silently dropping connections during long, quiet CPU-heavy builds.
-* **Automatic Host Discovery**: Recursively parses `~/.ssh/config` (including `Include` directives, wildcards, and path expansion) to securely extract explicit host aliases.
-* **Zero-Quoting Headaches**: Structured argument templates are automatically escaped and joined natively behind the scenes, completely eliminating the painful double/triple shell escaping errors normally generated when agents try to quote remote utilities over standard SSH shells.
-
----
-
 ## Quick Start
 
 ```bash
@@ -34,6 +23,17 @@ cargo install agentic_ssh
 agentic_ssh install
 
 ```
+
+---
+
+## High-Leverage Features
+
+* **Asynchronous Background Orchestration (`background: true`)**: Instantly hands control back to the agent runner when long-running scripts (such as massive Nix setups, system updates, or heavy compilation tasks) are fired. The agent is immediately freed to process other workflows concurrently while the remote task crunches in the background.
+* **Token-Efficient Session Telemetry**: Completely routes around agent frameworks that swallow local `stderr`. Long jobs stream progress to unique, self-cleaning session log files (`~/.agentic_ssh/sessions/*.log`), preventing concurrent agent instances from clobbering each other's outputs.
+* **Smart Progress Tickers (`quiet: true`)**: Keeps human terminal dashboards updated via a configurable time-interval progress loop without transferring a single line of raw compilation text over the internet, saving massive amounts of LLM context tokens.
+* **Hardened Connection Heartbeats**: Automatically configures `russh` keepalives to ping remote environments every 30 seconds, preventing intermediate overlays (like Tailscale, cloud virtual routers, or firewalls) from silently dropping connections during long, quiet CPU-heavy builds.
+* **Automatic Host Discovery**: Recursively parses `~/.ssh/config` (including `Include` directives, wildcards, and path expansion) to securely extract explicit host aliases.
+* **Zero-Quoting Headaches**: Structured argument templates are automatically escaped and joined natively behind the scenes, completely eliminating the painful double/triple shell escaping errors normally generated when agents try to quote remote utilities over standard SSH shells.
 
 ---
 

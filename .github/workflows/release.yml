@@ -72,10 +72,119 @@ jobs:
         shell: bash
         run: gh release upload ${{ github.ref_name }} agentic_ssh-${{ github.ref_name }}-${{ matrix.name }}.${{ matrix.archive }} --clobber
 
+      # --- Homebrew bottle (only for platforms with bottle_tag) ---
+
+      - name: Package Homebrew bottle
+        if: matrix.bottle_tag && github.event_name == 'release'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BOTTLE_TAG="${{ matrix.bottle_tag }}"
+          mkdir -p agentic_ssh/${VERSION}/bin
+          cp target/${{ matrix.target }}/release/agentic_ssh agentic_ssh/${VERSION}/bin/agentic_ssh
+          chmod +x agentic_ssh/${VERSION}/bin/agentic_ssh
+          tar czf "agentic_ssh-${VERSION}.${BOTTLE_TAG}.bottle.tar.gz" agentic_ssh/
+
+      - name: Upload bottle artifact
+        if: matrix.bottle_tag && github.event_name == 'release'
+        uses: actions/upload-artifact@v8
+        with:
+          name: bottle-${{ matrix.bottle_tag }}
+          path: "agentic_ssh-*.bottle.tar.gz"
+
+  update-homebrew:
+    name: Update Homebrew tap
+    if: github.event_name == 'release' && !github.event.release.prerelease && !cancelled()
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Download bottle artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: bottles
+          merge-multiple: true
+
+      - name: Upload bottles to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for f in bottles/agentic_ssh-*.bottle.tar.gz; do
+            gh release upload "${GITHUB_REF_NAME}" "$f" --clobber
+          done
+
+      - name: Download source tarball
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          curl -sL "https://github.com/${{ github.repository }}/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz" -o "source.tar.gz"
+
+      - name: Compute SHA256 hashes
+        id: hashes
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          SOURCE_SHA=$(sha256sum source.tar.gz | awk '{print $1}')
+          echo "source_sha=${SOURCE_SHA}" >> "$GITHUB_OUTPUT"
+
+          for f in bottles/agentic_ssh-*.bottle.tar.gz; do
+            tag=$(basename "$f" | sed "s/agentic_ssh-${VERSION}\.\(.*\)\.bottle\.tar\.gz/\1/")
+            sha=$(sha256sum "$f" | awk '{print $1}')
+            echo "${tag}_sha=${sha}" >> "$GITHUB_OUTPUT"
+          done
+
+      - name: Update formula
+        env:
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          SOURCE_SHA="${{ steps.hashes.outputs.source_sha }}"
+          ARM64_SONOMA_SHA="${{ steps.hashes.outputs.arm64_sonoma_sha }}"
+          X86_64_LINUX_SHA="${{ steps.hashes.outputs.x86_64_linux_sha }}"
+
+          git clone "https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/sandbanks/homebrew-tap.git" tap
+
+          cat > tap/Formula/agentic_ssh.rb << EOF
+          class AgenticSsh < Formula
+            desc "MCP server for detached background operations and secure SSH execution"
+            homepage "https://github.com/sandbanks/agentic_ssh"
+            url "https://github.com/sandbanks/agentic_ssh/archive/refs/tags/v${VERSION}.tar.gz"
+            sha256 "${SOURCE_SHA}"
+            license "MIT"
+
+            bottle do
+              root_url "https://github.com/sandbanks/agentic_ssh/releases/download/v${VERSION}"
+              sha256 cellar: :any_skip_relocation, arm64_sonoma: "${ARM64_SONOMA_SHA}"
+              sha256 cellar: :any_skip_relocation, x86_64_linux: "${X86_64_LINUX_SHA}"
+            end
+
+            depends_on "rust" => :build
+
+            def install
+              system "cargo", "install", *std_cargo_args
+            end
+
+            test do
+              system bin/"agentic_ssh", "--help"
+            end
+          end
+          EOF
+
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/agentic_ssh.rb
+          git diff --cached --quiet || git commit -m "agentic_ssh ${VERSION}"
+          git push
+
   publish-crate:
     name: Publish to crates.io
     if: github.event_name == 'release' && !github.event.release.prerelease
-    needs: build
+    # needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

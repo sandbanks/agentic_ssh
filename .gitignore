@@ -7,4 +7,7 @@
 /pool_status.json
 .idea
 
-issue*.md
+.notes
+
+# bv (beads viewer) local config and caches
+.bv/
