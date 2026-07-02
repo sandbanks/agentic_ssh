@@ -1,4 +1,6 @@
 [![Release](https://github.com/sandbanks/agentic_ssh/actions/workflows/release.yml/badge.svg)](https://github.com/sandbanks/agentic_ssh/actions/workflows/release.yml)
+[![Crates.io Recent Downloads](https://img.shields.io/crates/dr/agentic_ssh?color=orange)](https://crates.io/crates/agentic_ssh)
+[![Crates.io Total Downloads](https://img.shields.io/crates/d/agentic_ssh?color=orange)](https://crates.io/crates/agentic_ssh)
 
 # agentic_ssh
 
