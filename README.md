@@ -14,6 +14,14 @@ Unlike generic terminal tools that block agent execution or flood context window
 ## Quick Start
 
 ```bash
+# Install Homebrew (MacOS or linux)
+brew tap sandbanks/tap
+brew trust sandbanks/tap
+brew install agentic_ssh
+
+# Install Homebrew (one step)
+brew install sandbanks/tap/agentic_ssh
+
 # Install (recommended: pre-compiled binary via cargo-binstall)
 cargo binstall agentic_ssh
 
