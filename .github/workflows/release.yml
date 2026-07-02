@@ -86,7 +86,7 @@ jobs:
 
       - name: Upload bottle artifact
         if: matrix.bottle_tag && github.event_name == 'release'
-        uses: actions/upload-artifact@v8
+        uses: actions/upload-artifact@v4
         with:
           name: bottle-${{ matrix.bottle_tag }}
           path: "agentic_ssh-*.bottle.tar.gz"
