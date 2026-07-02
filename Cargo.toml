@@ -13,7 +13,7 @@ documentation = "https://docs.rs/agentic_ssh"
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
-russh = { version = "0.61" }
+russh = { version = "0.62" }
 ssh2-config-rs = "0.7"
 anyhow = "1"
 mimalloc = "0.1"
