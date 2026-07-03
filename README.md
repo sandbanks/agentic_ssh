@@ -1,7 +1,8 @@
 [![Release](https://github.com/sandbanks/agentic_ssh/actions/workflows/release.yml/badge.svg)](https://github.com/sandbanks/agentic_ssh/actions/workflows/release.yml)
+[![Crates.io](https://img.shields.io/crates/v/agentic_ssh.svg)](https://crates.io/crates/agentic_ssh)
 [![Crates.io Recent Downloads](https://img.shields.io/crates/dr/agentic_ssh?color=orange "Crates.io Recent Downloads (90 Days)")](https://crates.io/crates/agentic_ssh)
 [![Crates.io Total Downloads](https://img.shields.io/crates/d/agentic_ssh?color=orange "Crates.io Total Downloads")](https://crates.io/crates/agentic_ssh)
-[![Homebrew Installs](https://img.shields.io/homebrew/installs/dy/sandbanks/tap/agentic_ssh?color=orange "Homebrew Installs (90 Days)")](https://github.com/sandbanks/homebrew-tap)
+[![Homebrew](https://img.shields.io/badge/brew-sandbanks%2Ftap-orange?logo=homebrew)](https://github.com/sandbanks/agentic_ssh#quick-start)
 
 # agentic_ssh
 
