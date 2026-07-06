@@ -6,7 +6,7 @@ use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
-use crate::ssh_config::{expand_path, load_ssh_config};
+use crate::ssh_config::{expand_path, list_ssh_hosts, load_ssh_config};
 
 #[derive(Clone)]
 pub struct ClientHandler;
@@ -174,6 +174,8 @@ pub struct Config {
     pub ignore_hosts: Vec<String>,
     #[serde(default, alias = "include_hosts")]
     pub allow_hosts: Vec<String>,
+    #[serde(default)]
+    pub groups: HashMap<String, Vec<String>>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub custom_tools: Vec<LegacyCustomTool>,
 }
@@ -183,6 +185,22 @@ impl Config {
         for (name, tool) in &self.tools {
             tool.validate(name)?;
         }
+
+        // Loop through all group keys and ensure none clash with existing SSH aliases
+        let ssh_hosts: Vec<String> = list_ssh_hosts()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|h| h.to_lowercase())
+            .collect();
+        for group_name in self.groups.keys() {
+            if ssh_hosts.contains(&group_name.to_lowercase()) {
+                anyhow::bail!(
+                    "Configuration Error: Group name '{}' clashes with an existing SSH host alias.",
+                    group_name
+                );
+            }
+        }
+
         Ok(())
     }
 }
@@ -369,6 +387,11 @@ pub fn merge_configs(mut global: Config, local: Config, trusted: bool) -> Config
             }
         }
     }
+
+    for (name, group) in local.groups {
+        global.groups.insert(name, group);
+    }
+
     global
 }
 
@@ -1548,5 +1571,27 @@ mod tests {
         assert_eq!(gt.allow_hosts, vec!["dev-box".to_string()]);
         assert_eq!(gt.params.get("arg").unwrap().validation, "strict");
         assert_eq!(gt.params.get("arg2").unwrap().validation, "strict");
+    }
+
+    #[test]
+    fn test_group_clash_validation() {
+        let mut config = Config::default();
+        let ssh_hosts = list_ssh_hosts().unwrap_or_default();
+        if !ssh_hosts.is_empty() {
+            let clash_host = &ssh_hosts[0];
+            config
+                .groups
+                .insert(clash_host.clone(), vec!["another-host".to_string()]);
+            assert!(config.validate().is_err());
+            let err_msg = format!("{:#}", config.validate().err().unwrap());
+            assert!(err_msg.contains("clashes with an existing SSH host alias"));
+        }
+
+        let mut config_ok = Config::default();
+        config_ok.groups.insert(
+            "non-existent-unique-group-name-xyz".to_string(),
+            vec!["host1".to_string()],
+        );
+        assert!(config_ok.validate().is_ok());
     }
 }

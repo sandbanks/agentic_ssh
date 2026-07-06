@@ -216,6 +216,14 @@ impl McpServer {
                             }
                         },
                         {
+                            "name": "list_groups",
+                            "description": "List all configured host groups and their mapped SSH host aliases from the active configuration.",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {}
+                            }
+                        },
+                        {
                             "name": "run_command",
                             "description": "Execute a shell command on a single host via 'host' or multiple hosts concurrently via 'hosts'. Prefer 'hosts' to query multiple machines simultaneously. If 'hosts' is provided, returns a JSON object mapping hostnames to their respective results (status, stdout, stderr, exit_code).",
                             "inputSchema": {
@@ -223,12 +231,12 @@ impl McpServer {
                                 "properties": {
                                     "host": {
                                         "type": "string",
-                                        "description": "SSH host alias from ~/.ssh/config. Provide either 'host' or 'hosts', but not both."
+                                        "description": "SSH host alias or a defined group name. Provide either 'host' or 'hosts', but not both."
                                     },
                                     "hosts": {
                                         "type": "array",
                                         "items": { "type": "string" },
-                                        "description": "Array of SSH host aliases from ~/.ssh/config to query concurrently. Returns tagged JSON mapping host to result."
+                                        "description": "Array containing individual host aliases, group names, or a combination of both to query concurrently. Returns tagged JSON mapping host to result."
                                     },
                                     "command": {
                                         "type": "string",
@@ -266,12 +274,12 @@ impl McpServer {
                                 "properties": {
                                     "host": {
                                         "type": "string",
-                                        "description": "SSH host alias from ~/.ssh/config. Provide either 'host' or 'hosts', but not both."
+                                        "description": "SSH host alias or a defined group name. Provide either 'host' or 'hosts', but not both."
                                     },
                                     "hosts": {
                                         "type": "array",
                                         "items": { "type": "string" },
-                                        "description": "Array of SSH host aliases from ~/.ssh/config to query concurrently. Returns tagged JSON mapping host to result."
+                                        "description": "Array containing individual host aliases, group names, or a combination of both to query concurrently. Returns tagged JSON mapping host to result."
                                     },
                                     "pattern": {
                                         "type": "string",
@@ -293,12 +301,12 @@ impl McpServer {
                                 "properties": {
                                     "host": {
                                         "type": "string",
-                                        "description": "SSH host alias from ~/.ssh/config. Provide either 'host' or 'hosts', but not both."
+                                        "description": "SSH host alias or a defined group name. Provide either 'host' or 'hosts', but not both."
                                     },
                                     "hosts": {
                                         "type": "array",
                                         "items": { "type": "string" },
-                                        "description": "Array of SSH host aliases from ~/.ssh/config to query concurrently. Returns tagged JSON mapping host to result."
+                                        "description": "Array containing individual host aliases, group names, or a combination of both to query concurrently. Returns tagged JSON mapping host to result."
                                     },
                                     "file_path": {
                                         "type": "string",
@@ -320,12 +328,12 @@ impl McpServer {
                                 "properties": {
                                     "host": {
                                         "type": "string",
-                                        "description": "SSH host alias from ~/.ssh/config. Provide either 'host' or 'hosts', but not both."
+                                        "description": "SSH host alias or a defined group name. Provide either 'host' or 'hosts', but not both."
                                     },
                                     "hosts": {
                                         "type": "array",
                                         "items": { "type": "string" },
-                                        "description": "Array of SSH host aliases from ~/.ssh/config to query concurrently. Returns tagged JSON mapping host to result."
+                                        "description": "Array containing individual host aliases, group names, or a combination of both to query concurrently. Returns tagged JSON mapping host to result."
                                     },
                                     "container": {
                                         "type": "string",
@@ -351,12 +359,12 @@ impl McpServer {
                                 "properties": {
                                     "host": {
                                         "type": "string",
-                                        "description": "SSH host alias from ~/.ssh/config. Provide either 'host' or 'hosts', but not both."
+                                        "description": "SSH host alias or a defined group name. Provide either 'host' or 'hosts', but not both."
                                     },
                                     "hosts": {
                                         "type": "array",
                                         "items": { "type": "string" },
-                                        "description": "Array of SSH host aliases from ~/.ssh/config to query concurrently. Returns tagged JSON mapping host to result."
+                                        "description": "Array containing individual host aliases, group names, or a combination of both to query concurrently. Returns tagged JSON mapping host to result."
                                     },
                                     "file_path": {
                                         "type": "string",
@@ -386,12 +394,12 @@ impl McpServer {
                                 "properties": {
                                     "host": {
                                         "type": "string",
-                                        "description": "SSH host alias from ~/.ssh/config. Provide either 'host' or 'hosts', but not both."
+                                        "description": "SSH host alias or a defined group name. Provide either 'host' or 'hosts', but not both."
                                     },
                                     "hosts": {
                                         "type": "array",
                                         "items": { "type": "string" },
-                                        "description": "Array of SSH host aliases from ~/.ssh/config to query concurrently. Returns tagged JSON mapping host to result."
+                                        "description": "Array containing individual host aliases, group names, or a combination of both to query concurrently. Returns tagged JSON mapping host to result."
                                     }
                                 },
                                 "required": []
@@ -405,12 +413,12 @@ impl McpServer {
                                 "properties": {
                                     "host": {
                                         "type": "string",
-                                        "description": "SSH host alias from ~/.ssh/config. Provide either 'host' or 'hosts', but not both."
+                                        "description": "SSH host alias or a defined group name. Provide either 'host' or 'hosts', but not both."
                                     },
                                     "hosts": {
                                         "type": "array",
                                         "items": { "type": "string" },
-                                        "description": "Array of SSH host aliases from ~/.ssh/config to query concurrently. Returns tagged JSON mapping host to result."
+                                        "description": "Array containing individual host aliases, group names, or a combination of both to query concurrently. Returns tagged JSON mapping host to result."
                                     },
                                     "port": {
                                         "type": "integer",
@@ -440,14 +448,14 @@ impl McpServer {
                         let mut properties = serde_json::Map::new();
                         properties.insert("host".to_string(), serde_json::json!({
                             "type": "string",
-                            "description": "The SSH host to query. Provide either 'host' or 'hosts', but not both."
+                            "description": "SSH host alias or a defined group name. Provide either 'host' or 'hosts', but not both."
                         }));
                         properties.insert(
                             "hosts".to_string(),
                             serde_json::json!({
                                 "type": "array",
                                 "items": { "type": "string" },
-                                "description": "Optional: list of SSH hosts to query concurrently"
+                                "description": "Array containing individual host aliases, group names, or a combination of both to query concurrently."
                             }),
                         );
 
@@ -687,6 +695,19 @@ impl McpServer {
         }
 
         match name {
+            "list_groups" => {
+                let config = crate::ssh_pool::load_config();
+                let text = serde_json::to_string_pretty(&config.groups)?;
+                Ok(serde_json::json!({
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": text
+                        }
+                    ],
+                    "isError": false
+                }))
+            }
             "list_hosts" => match list_ssh_hosts() {
                 Ok(hosts) => {
                     let ssh_config = crate::ssh_config::load_ssh_config().unwrap_or_default();
@@ -1714,9 +1735,52 @@ fn parse_listening_ports(raw_output: &str, filter_port: Option<u32>) -> Vec<List
     results
 }
 
+fn expand_host_recursive(
+    host_or_group: &str,
+    groups: &std::collections::HashMap<String, Vec<String>>,
+    visited: &mut std::collections::HashSet<String>,
+    expanded: &mut Vec<String>,
+) {
+    if groups.contains_key(host_or_group) {
+        if visited.insert(host_or_group.to_string()) {
+            if let Some(members) = groups.get(host_or_group) {
+                for member in members {
+                    expand_host_recursive(member, groups, visited, expanded);
+                }
+            }
+            visited.remove(host_or_group);
+        }
+    } else {
+        expanded.push(host_or_group.to_string());
+    }
+}
+
+pub fn resolve_hosts(
+    hosts_input: &[String],
+    groups: &std::collections::HashMap<String, Vec<String>>,
+) -> Vec<String> {
+    let mut expanded = Vec::new();
+    let mut visited = std::collections::HashSet::new();
+    for host in hosts_input {
+        expand_host_recursive(host, groups, &mut visited, &mut expanded);
+    }
+
+    let mut seen = std::collections::HashSet::new();
+    let mut result = Vec::new();
+    for h in expanded {
+        if seen.insert(h.clone()) {
+            result.push(h);
+        }
+    }
+    result
+}
+
 pub fn parse_hosts(arguments: &serde_json::Value) -> anyhow::Result<(Vec<String>, bool)> {
+    let config = crate::ssh_pool::load_config();
+    let groups = &config.groups;
+
     if let Some(hosts_val) = arguments.get("hosts") {
-        let hosts: Vec<String> = if let Some(arr) = hosts_val.as_array() {
+        let input_hosts: Vec<String> = if let Some(arr) = hosts_val.as_array() {
             arr.iter()
                 .filter_map(|v| v.as_str().map(|s| s.to_string()))
                 .collect()
@@ -1725,12 +1789,18 @@ pub fn parse_hosts(arguments: &serde_json::Value) -> anyhow::Result<(Vec<String>
         } else {
             anyhow::bail!("Invalid 'hosts' argument: must be an array of strings");
         };
-        if hosts.is_empty() {
+        if input_hosts.is_empty() {
             anyhow::bail!("The 'hosts' list cannot be empty");
         }
-        Ok((hosts, true))
+        let expanded = resolve_hosts(&input_hosts, groups);
+        Ok((expanded, true))
     } else if let Some(host_val) = arguments.get("host").and_then(|v| v.as_str()) {
-        Ok((vec![host_val.to_string()], false))
+        if groups.contains_key(host_val) {
+            let expanded = resolve_hosts(&[host_val.to_string()], groups);
+            Ok((expanded, true))
+        } else {
+            Ok((vec![host_val.to_string()], false))
+        }
     } else {
         anyhow::bail!(
             "Missing target host(s): specify either 'host' (string) or 'hosts' (array of strings)"
@@ -1951,5 +2021,67 @@ udp   UNCONN 0      0            0.0.0.0:53          0.0.0.0:*     users:((\"nam
         assert_eq!(map.get("host1").unwrap().get("data").unwrap(), "hello");
         assert_eq!(map.get("host2").unwrap().get("status").unwrap(), "success");
         assert_eq!(map.get("host2").unwrap().get("data").unwrap(), "hello");
+    }
+
+    #[test]
+    fn test_resolve_hosts_recursive() {
+        let mut groups = std::collections::HashMap::new();
+        groups.insert(
+            "ubuntu".to_string(),
+            vec!["server-a".to_string(), "server-b".to_string()],
+        );
+        groups.insert("nix".to_string(), vec!["server-c".to_string()]);
+        groups.insert(
+            "all".to_string(),
+            vec![
+                "ubuntu".to_string(),
+                "nix".to_string(),
+                "other-host".to_string(),
+            ],
+        );
+        groups.insert("circular-a".to_string(), vec!["circular-b".to_string()]);
+        groups.insert(
+            "circular-b".to_string(),
+            vec!["circular-a".to_string(), "target-host".to_string()],
+        );
+
+        // Simple group expansion
+        let resolved = resolve_hosts(&["ubuntu".to_string()], &groups);
+        assert_eq!(
+            resolved,
+            vec!["server-a".to_string(), "server-b".to_string()]
+        );
+
+        // Nested group expansion & deduplication
+        let resolved = resolve_hosts(&["all".to_string(), "server-a".to_string()], &groups);
+        assert_eq!(
+            resolved,
+            vec![
+                "server-a".to_string(),
+                "server-b".to_string(),
+                "server-c".to_string(),
+                "other-host".to_string()
+            ]
+        );
+
+        // Circular group expansion prevention
+        let resolved = resolve_hosts(&["circular-a".to_string()], &groups);
+        assert_eq!(resolved, vec!["target-host".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn test_list_groups_tool() {
+        let server = McpServer::new(std::time::Duration::from_secs(300));
+        let params = serde_json::json!({
+            "name": "list_groups",
+            "arguments": {}
+        });
+        let result = server.handle_tools_call(Some(params)).await.unwrap();
+        assert!(!result.get("isError").unwrap().as_bool().unwrap());
+        let content = result.get("content").unwrap().as_array().unwrap();
+        assert_eq!(content.len(), 1);
+        let text_val = content[0].get("text").unwrap().as_str().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(text_val).unwrap();
+        assert!(parsed.is_object());
     }
 }

@@ -126,6 +126,9 @@ async fn main() -> anyhow::Result<()> {
         no_global: cli.no_global,
     });
 
+    // Run configuration loading and validation check immediately upon startup
+    let _ = crate::ssh_pool::load_config();
+
     // GUARDRAIL 1: Protect explicit config override paths and trust commands from agent injection
     if cli.config.is_some() || cli.no_global || matches!(cli.command, Some(Commands::Trust { .. }))
     {
