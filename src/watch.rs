@@ -442,13 +442,25 @@ fn draw_ui(f: &mut ratatui::Frame, state: &WatchState) {
 
         let (status_text, style) = if failed > 0 {
             (
-                format!(" ✘ Execution complete. Succeeded: {}/{}, Failed: {}. Press Esc or Ctrl+C to exit. ", succeeded, total, failed),
-                Style::default().bg(Color::Red).fg(Color::White).add_modifier(Modifier::BOLD)
+                format!(
+                    " ✘ Execution complete. Succeeded: {}/{}, Failed: {}. Press Esc or Ctrl+C to exit. ",
+                    succeeded, total, failed
+                ),
+                Style::default()
+                    .bg(Color::Red)
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
             )
         } else {
             (
-                format!(" ✔ Execution complete. All {} hosts succeeded. Press Esc or Ctrl+C to exit. ", total),
-                Style::default().bg(Color::Green).fg(Color::Black).add_modifier(Modifier::BOLD)
+                format!(
+                    " ✔ Execution complete. All {} hosts succeeded. Press Esc or Ctrl+C to exit. ",
+                    total
+                ),
+                Style::default()
+                    .bg(Color::Green)
+                    .fg(Color::Black)
+                    .add_modifier(Modifier::BOLD),
             )
         };
 

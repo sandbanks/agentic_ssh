@@ -318,7 +318,8 @@ pub struct CliOverride {
 }
 
 pub static CLI_OVERRIDE: OnceLock<CliOverride> = OnceLock::new();
-pub static SILENT_CONNECTION_LOGS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static SILENT_CONNECTION_LOGS: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 pub fn find_local_config(start_dir: &Path) -> Option<PathBuf> {
     let mut current = start_dir.to_path_buf();
@@ -877,7 +878,10 @@ impl ConnectionPool {
 
         pool_eprintln!(
             "Connecting to {} ({}:{}) as user {}...",
-            host, real_host, port, user
+            host,
+            real_host,
+            port,
+            user
         );
 
         // Resolve host to socket address
@@ -966,7 +970,8 @@ impl ConnectionPool {
                             if success.success() {
                                 pool_eprintln!(
                                     "Authentication succeeded for {} using {:?}",
-                                    host, key_path
+                                    host,
+                                    key_path
                                 );
                                 authenticated = true;
                                 break;
