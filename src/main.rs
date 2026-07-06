@@ -11,6 +11,7 @@ mod mcp_server;
 mod security;
 mod ssh_config;
 mod ssh_pool;
+mod watch;
 
 use clap::{Parser, Subcommand, ValueEnum};
 
@@ -86,6 +87,13 @@ enum Commands {
     },
     /// Start the live TUI connection pool dashboard
     Tui,
+    /// Watch a command executing on one or more hosts in real-time
+    Watch {
+        /// Target host alias, comma-separated list, or group name
+        target: String,
+        /// Command to execute on the remote host(s)
+        command: String,
+    },
     /// Start the MCP server (default)
     Serve,
     /// Install the MCP server configuration for AI agents
@@ -139,8 +147,8 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    let skip_auto_install = matches!(cli.command, Some(Commands::Uninstall { .. }));
-    if !skip_auto_install {
+    let is_server_init = matches!(cli.command, Some(Commands::Serve) | None);
+    if is_server_init {
         let _ = auto_install_if_needed();
     }
 
@@ -152,6 +160,9 @@ async fn main() -> anyhow::Result<()> {
 
         Some(Commands::Tui) => {
             run_tui()?;
+        }
+        Some(Commands::Watch { target, command }) => {
+            watch::run_watch(&target, &command).await?;
         }
         Some(Commands::Install { agent, local }) => {
             let home = crate::agents::home_dir()

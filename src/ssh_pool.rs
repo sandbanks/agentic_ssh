@@ -1,3 +1,11 @@
+macro_rules! pool_eprintln {
+    ($($arg:tt)*) => {
+        if !crate::ssh_pool::SILENT_CONNECTION_LOGS.load(std::sync::atomic::Ordering::Relaxed) {
+            eprintln!($($arg)*);
+        }
+    };
+}
+
 use anyhow::{Context, Result, anyhow};
 use russh::client::Handle;
 use std::collections::HashMap;
@@ -310,6 +318,7 @@ pub struct CliOverride {
 }
 
 pub static CLI_OVERRIDE: OnceLock<CliOverride> = OnceLock::new();
+pub static SILENT_CONNECTION_LOGS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 pub fn find_local_config(start_dir: &Path) -> Option<PathBuf> {
     let mut current = start_dir.to_path_buf();
@@ -687,7 +696,7 @@ impl ConnectionPool {
                     if conn.active_operations > 0 {
                         true
                     } else if now.duration_since(conn.last_used) > idle_timeout {
-                        eprintln!("Closing idle connection to host: {}", host);
+                        pool_eprintln!("Closing idle connection to host: {}", host);
                         false
                     } else {
                         true
@@ -809,7 +818,7 @@ impl ConnectionPool {
                 }
                 Err(_) => {
                     // Connection is dead, remove it from the pool and build a new one.
-                    eprintln!("Existing connection to {} was dead. Reconnecting...", host);
+                    pool_eprintln!("Existing connection to {} was dead. Reconnecting...", host);
                     map.remove(host);
                 }
             }
@@ -866,7 +875,7 @@ impl ConnectionPool {
         let mut seen = std::collections::HashSet::new();
         keys_to_try.retain(|x| seen.insert(x.clone()));
 
-        eprintln!(
+        pool_eprintln!(
             "Connecting to {} ({}:{}) as user {}...",
             host, real_host, port, user
         );
@@ -894,7 +903,7 @@ impl ConnectionPool {
 
         // Try SSH Agent first if available
         if let Ok(socket_path) = std::env::var("SSH_AUTH_SOCK") {
-            eprintln!(
+            pool_eprintln!(
                 "SSH_AUTH_SOCK found at {:?}. Attempting agent authentication...",
                 socket_path
             );
@@ -903,9 +912,9 @@ impl ConnectionPool {
                     let mut agent_client = russh::keys::agent::client::AgentClient::connect(stream);
                     match agent_client.request_identities().await {
                         Ok(identities) => {
-                            eprintln!("Found {} keys in SSH agent", identities.len());
+                            pool_eprintln!("Found {} keys in SSH agent", identities.len());
                             for identity in identities {
-                                eprintln!("Trying agent key...");
+                                pool_eprintln!("Trying agent key...");
                                 match handle
                                     .authenticate_publickey_with(
                                         user,
@@ -917,29 +926,29 @@ impl ConnectionPool {
                                 {
                                     Ok(success) => {
                                         if success.success() {
-                                            eprintln!(
+                                            pool_eprintln!(
                                                 "Authentication succeeded for {} using SSH agent key",
                                                 host
                                             );
                                             authenticated = true;
                                             break;
                                         } else {
-                                            eprintln!("Server rejected agent key");
+                                            pool_eprintln!("Server rejected agent key");
                                         }
                                     }
                                     Err(e) => {
-                                        eprintln!("Error with agent authentication: {:?}", e);
+                                        pool_eprintln!("Error with agent authentication: {:?}", e);
                                     }
                                 }
                             }
                         }
                         Err(e) => {
-                            eprintln!("Failed to request identities from SSH agent: {:?}", e);
+                            pool_eprintln!("Failed to request identities from SSH agent: {:?}", e);
                         }
                     }
                 }
                 Err(e) => {
-                    eprintln!("Failed to connect to SSH agent socket: {:?}", e);
+                    pool_eprintln!("Failed to connect to SSH agent socket: {:?}", e);
                 }
             }
         }
@@ -949,24 +958,24 @@ impl ConnectionPool {
                 if !key_path.exists() {
                     continue;
                 }
-                eprintln!("Attempting authentication with key: {:?}", key_path);
+                pool_eprintln!("Attempting authentication with key: {:?}", key_path);
                 if let Ok(key) = russh::keys::load_secret_key(key_path, None) {
                     let key_with_alg = russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key), None);
                     match handle.authenticate_publickey(user, key_with_alg).await {
                         Ok(success) => {
                             if success.success() {
-                                eprintln!(
+                                pool_eprintln!(
                                     "Authentication succeeded for {} using {:?}",
                                     host, key_path
                                 );
                                 authenticated = true;
                                 break;
                             } else {
-                                eprintln!("Server rejected key {:?}", key_path);
+                                pool_eprintln!("Server rejected key {:?}", key_path);
                             }
                         }
                         Err(e) => {
-                            eprintln!("Error authenticating with key {:?}: {:?}", key_path, e);
+                            pool_eprintln!("Error authenticating with key {:?}: {:?}", key_path, e);
                         }
                     }
                 }
@@ -996,7 +1005,7 @@ impl ConnectionPool {
         let handle = self.get_connection(host).await?;
         let _guard = self.start_operation(host).await;
 
-        eprintln!("Executing command on {}: {:?}", host, command);
+        pool_eprintln!("Executing command on {}: {:?}", host, command);
         let mut channel = handle
             .channel_open_session()
             .await
@@ -1044,10 +1053,10 @@ impl ConnectionPool {
                             if !quiet {
                                 let _ = tokio::io::stderr().write_all(&data).await;
                                 let _ = tokio::io::stderr().flush().await;
-                                if let Some(ref mut f) = log_file {
-                                    let _ = f.write_all(&data).await;
-                                    let _ = f.flush().await;
-                                }
+                            }
+                            if let Some(ref mut f) = log_file {
+                                let _ = f.write_all(&data).await;
+                                let _ = f.flush().await;
                             }
                         }
                         Some(russh::ChannelMsg::ExtendedData { data, ext }) => {
@@ -1056,10 +1065,10 @@ impl ConnectionPool {
                                 if !quiet {
                                     let _ = tokio::io::stderr().write_all(&data).await;
                                     let _ = tokio::io::stderr().flush().await;
-                                    if let Some(ref mut f) = log_file {
-                                        let _ = f.write_all(&data).await;
-                                        let _ = f.flush().await;
-                                    }
+                                }
+                                if let Some(ref mut f) = log_file {
+                                    let _ = f.write_all(&data).await;
+                                    let _ = f.flush().await;
                                 }
                             }
                         }
