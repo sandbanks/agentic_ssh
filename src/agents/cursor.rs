@@ -26,10 +26,6 @@ impl AgentIntegration for CursorIntegration {
         "cursor"
     }
 
-    fn supports_local(&self) -> bool {
-        true
-    }
-
     fn install(&self, ctx: &InstallContext) -> Result<()> {
         let mcp_path = ctx.base_dir().join(".cursor/mcp.json");
 
@@ -83,10 +79,6 @@ impl AgentIntegration for CursorIntegration {
         home.join(".cursor").is_dir()
     }
 
-    fn primary_config_path(&self, home: &Path) -> Option<std::path::PathBuf> {
-        Some(home.join(".cursor/mcp.json"))
-    }
-
     fn has_agentic_ssh(&self, home: &Path) -> bool {
         let mcp_path = home.join(".cursor/mcp.json");
         if !mcp_path.exists() {
@@ -106,6 +98,14 @@ impl AgentIntegration for CursorIntegration {
         } else {
             false
         }
+    }
+
+    fn supports_local(&self) -> bool {
+        true
+    }
+
+    fn primary_config_path(&self, home: &Path) -> Option<std::path::PathBuf> {
+        Some(home.join(".cursor/mcp.json"))
     }
 }
 

@@ -914,7 +914,7 @@ fn backup_file(path: &Path) -> Result<()> {
     }
     let mut backup = path.as_os_str().to_owned();
     backup.push(".bak");
-    let backup = std::path::PathBuf::from(backup);
+    let backup = PathBuf::from(backup);
     std::fs::copy(path, &backup).map_err(|e| AgenticSshError::Config {
         message: format!(
             "failed to back up {} to {}: {e}",

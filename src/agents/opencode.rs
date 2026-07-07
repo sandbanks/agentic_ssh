@@ -31,10 +31,6 @@ impl AgentIntegration for OpenCodeIntegration {
         "opencode"
     }
 
-    fn supports_local(&self) -> bool {
-        true
-    }
-
     fn install(&self, ctx: &InstallContext) -> Result<()> {
         let config_path = opencode_config_path_for(ctx);
         install_mcp_server(&config_path, &ctx.agentic_ssh_bin)?;
@@ -72,16 +68,12 @@ impl AgentIntegration for OpenCodeIntegration {
         home.join(".config").join("opencode").is_dir()
     }
 
-    fn primary_config_path(&self, home: &Path) -> Option<std::path::PathBuf> {
-        Some(opencode_config_path(home))
-    }
-
     fn has_agentic_ssh(&self, home: &Path) -> bool {
         let config_path = opencode_config_path(home);
         if !config_path.exists() {
             return false;
         }
-        let json = super::load_json_file(&config_path);
+        let json = load_json_file(&config_path);
         if let Some(agentic_ssh) = json.get("mcp").and_then(|v| v.get("agentic_ssh")) {
             if let Some(current_bin) = super::which_agentic_ssh() {
                 let cmd = agentic_ssh
@@ -97,6 +89,14 @@ impl AgentIntegration for OpenCodeIntegration {
         } else {
             false
         }
+    }
+
+    fn supports_local(&self) -> bool {
+        true
+    }
+
+    fn primary_config_path(&self, home: &Path) -> Option<std::path::PathBuf> {
+        Some(opencode_config_path(home))
     }
 }
 

@@ -45,10 +45,6 @@ impl AgentIntegration for ClaudeIntegration {
         Ok(())
     }
 
-    fn supports_local(&self) -> bool {
-        true
-    }
-
     fn healthcheck(&self, dc: &mut DoctorCounters, ctx: &HealthcheckContext) {
         eprintln!("\n\x1b[1mClaude Code integration\x1b[0m");
         doctor_check_claude_json(dc, &ctx.home);
@@ -59,10 +55,6 @@ impl AgentIntegration for ClaudeIntegration {
 
     fn is_detected(&self, home: &Path) -> bool {
         home.join(".claude").is_dir()
-    }
-
-    fn primary_config_path(&self, home: &Path) -> Option<std::path::PathBuf> {
-        Some(home.join(".claude.json"))
     }
 
     fn has_agentic_ssh(&self, home: &Path) -> bool {
@@ -84,6 +76,14 @@ impl AgentIntegration for ClaudeIntegration {
         } else {
             false
         }
+    }
+
+    fn supports_local(&self) -> bool {
+        true
+    }
+
+    fn primary_config_path(&self, home: &Path) -> Option<std::path::PathBuf> {
+        Some(home.join(".claude.json"))
     }
 }
 
@@ -343,7 +343,7 @@ fn install_permissions(settings: &mut serde_json::Value, tool_permissions: &[Str
         .as_array()
         .map(|arr| {
             arr.iter()
-                .filter_map(|v| v.as_str().map(std::string::ToString::to_string))
+                .filter_map(|v| v.as_str().map(ToString::to_string))
                 .collect()
         })
         .unwrap_or_default();
@@ -611,11 +611,7 @@ fn uninstall_single_hook(settings: &mut serde_json::Value, event: &str) -> bool 
                 })
         })
         .collect();
-    if filtered.len()
-        >= settings["hooks"][event]
-            .as_array()
-            .map_or(0, std::vec::Vec::len)
-    {
+    if filtered.len() >= settings["hooks"][event].as_array().map_or(0, Vec::len) {
         return false;
     }
     if filtered.is_empty() {
@@ -647,7 +643,7 @@ fn uninstall_permissions(settings: &mut serde_json::Value) -> bool {
     if filtered.len()
         >= settings["permissions"]["allow"]
             .as_array()
-            .map_or(0, std::vec::Vec::len)
+            .map_or(0, Vec::len)
     {
         return false;
     }
@@ -1120,7 +1116,7 @@ fn clean_orphaned_local_mcp_keys(local_val: &mut serde_json::Value) {
     let no_local_servers = local_val
         .get("enabledMcpjsonServers")
         .and_then(|v| v.as_array())
-        .is_some_and(std::vec::Vec::is_empty)
+        .is_some_and(Vec::is_empty)
         && local_val
             .get("mcpServers")
             .and_then(|v| v.as_object())

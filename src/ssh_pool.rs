@@ -213,15 +213,19 @@ impl Config {
     }
 }
 
+static PLACEHOLDER_REGEX: std::sync::LazyLock<regex::Regex> =
+    std::sync::LazyLock::new(|| regex::Regex::new(r"\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}").unwrap());
+
 pub fn extract_placeholders(s: &str) -> Vec<String> {
-    let re = regex::Regex::new(r"\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}").unwrap();
-    re.captures_iter(s).map(|cap| cap[1].to_string()).collect()
+    PLACEHOLDER_REGEX
+        .captures_iter(s)
+        .map(|cap| cap[1].to_string())
+        .collect()
 }
 
 pub fn replace_placeholders(template: &str, args: &HashMap<String, String>) -> Result<String> {
-    let re = regex::Regex::new(r"\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}").unwrap();
     let mut err = None;
-    let result = re.replace_all(template, |caps: &regex::Captures| {
+    let result = PLACEHOLDER_REGEX.replace_all(template, |caps: &regex::Captures| {
         let param_name = &caps[1];
         match args.get(param_name) {
             Some(val) => val.clone(),
@@ -275,6 +279,23 @@ pub fn validate_param_value(value: &str, rule: &str) -> bool {
     }
 }
 
+fn match_host_pattern(
+    pattern_str: &str,
+    host_lower: &str,
+    resolved_lower: Option<&String>,
+) -> bool {
+    let pattern_lower = pattern_str.to_lowercase();
+    if let Ok(pattern) = glob::Pattern::new(&pattern_lower) {
+        if pattern.matches(host_lower) {
+            return true;
+        }
+        if resolved_lower.is_some_and(|res_host| pattern.matches(res_host)) {
+            return true;
+        }
+    }
+    false
+}
+
 pub fn is_host_allowed_for_tool(
     host: &str,
     resolved_host: Option<&str>,
@@ -287,17 +308,8 @@ pub fn is_host_allowed_for_tool(
     let resolved_lower = resolved_host.map(|s| s.to_lowercase());
 
     for pattern_str in allow_hosts {
-        let pattern_lower = pattern_str.to_lowercase();
-        if let Ok(pattern) = glob::Pattern::new(&pattern_lower) {
-            if pattern.matches(&host_lower) {
-                return true;
-            }
-            if resolved_lower
-                .as_ref()
-                .is_some_and(|res_host| pattern.matches(res_host))
-            {
-                return true;
-            }
+        if match_host_pattern(pattern_str, &host_lower, resolved_lower.as_ref()) {
+            return true;
         }
     }
     false
@@ -544,19 +556,9 @@ fn is_host_ignored_impl(
     if !allow_hosts.is_empty() {
         let mut allowed = false;
         for pattern_str in allow_hosts {
-            let pattern_lower = pattern_str.to_lowercase();
-            if let Ok(pattern) = glob::Pattern::new(&pattern_lower) {
-                if pattern.matches(&host_lower) {
-                    allowed = true;
-                    break;
-                }
-                if resolved_lower
-                    .as_ref()
-                    .is_some_and(|res_host| pattern.matches(res_host))
-                {
-                    allowed = true;
-                    break;
-                }
+            if match_host_pattern(pattern_str, &host_lower, resolved_lower.as_ref()) {
+                allowed = true;
+                break;
             }
         }
         if !allowed {
@@ -570,36 +572,27 @@ fn is_host_ignored_impl(
         if pattern_str == "*" && !allow_hosts.is_empty() {
             continue;
         }
-        let pattern_lower = pattern_str.to_lowercase();
-        if let Ok(pattern) = glob::Pattern::new(&pattern_lower) {
-            if pattern.matches(&host_lower) {
-                return true;
-            }
-            if resolved_lower
-                .as_ref()
-                .is_some_and(|res_host| pattern.matches(res_host))
-            {
-                return true;
-            }
+        if match_host_pattern(pattern_str, &host_lower, resolved_lower.as_ref()) {
+            return true;
         }
     }
 
     false
 }
 
-pub fn get_pool_status_path() -> std::path::PathBuf {
+pub fn get_pool_status_path() -> PathBuf {
     if let Ok(val) = std::env::var("AGENTIC_SSH_POOL_STATUS") {
-        return std::path::PathBuf::from(val);
+        return PathBuf::from(val);
     }
     let config = load_config();
     if let Some(ref path_str) = config.pool_status_path {
-        let raw_path = std::path::Path::new(path_str);
+        let raw_path = Path::new(path_str);
         return expand_path(raw_path);
     }
     if let Some(home_dir) = home::home_dir() {
         return home_dir.join(".agentic_ssh_pool_status.json");
     }
-    std::path::PathBuf::from("pool_status.json")
+    PathBuf::from("pool_status.json")
 }
 
 pub struct SshConnection {
@@ -607,6 +600,20 @@ pub struct SshConnection {
     pub last_used: Instant,
     pub active_operations: usize,
     pub idle_timeout_secs: u64,
+}
+
+impl SshConnection {
+    pub fn get_status_fields(&self, now: Instant, now_unix: u64) -> (u64, String) {
+        if self.active_operations > 0 {
+            (now_unix, "Executing".to_string())
+        } else {
+            let elapsed = now.duration_since(self.last_used);
+            (
+                now_unix.saturating_sub(elapsed.as_secs()),
+                "Active".to_string(),
+            )
+        }
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
@@ -641,7 +648,7 @@ pub struct ConnectionPool {
 pub struct ActiveOperationGuard {
     connections: Arc<Mutex<HashMap<String, SshConnection>>>,
     host: String,
-    pool_status_path: std::path::PathBuf,
+    pool_status_path: PathBuf,
 }
 
 impl Drop for ActiveOperationGuard {
@@ -667,15 +674,7 @@ impl Drop for ActiveOperationGuard {
             let statuses: Vec<ConnectionStatus> = map
                 .iter()
                 .map(|(h, c)| {
-                    let (last_used_unix, status_str) = if c.active_operations > 0 {
-                        (now_unix, "Executing".to_string())
-                    } else {
-                        let elapsed = now.duration_since(c.last_used);
-                        (
-                            now_unix.saturating_sub(elapsed.as_secs()),
-                            "Active".to_string(),
-                        )
-                    };
+                    let (last_used_unix, status_str) = c.get_status_fields(now, now_unix);
                     ConnectionStatus {
                         host: h.clone(),
                         last_used_timestamp: last_used_unix,
@@ -727,15 +726,7 @@ impl ConnectionPool {
                 let statuses: Vec<ConnectionStatus> = map
                     .iter()
                     .map(|(host, conn)| {
-                        let (last_used_unix, status_str) = if conn.active_operations > 0 {
-                            (now_unix, "Executing".to_string())
-                        } else {
-                            let elapsed = now.duration_since(conn.last_used);
-                            (
-                                now_unix.saturating_sub(elapsed.as_secs()),
-                                "Active".to_string(),
-                            )
-                        };
+                        let (last_used_unix, status_str) = conn.get_status_fields(now, now_unix);
                         ConnectionStatus {
                             host: host.clone(),
                             last_used_timestamp: last_used_unix,
@@ -764,15 +755,7 @@ impl ConnectionPool {
         let statuses: Vec<ConnectionStatus> = map
             .iter()
             .map(|(host, conn)| {
-                let (last_used_unix, status_str) = if conn.active_operations > 0 {
-                    (now_unix, "Executing".to_string())
-                } else {
-                    let elapsed = now.duration_since(conn.last_used);
-                    (
-                        now_unix.saturating_sub(elapsed.as_secs()),
-                        "Active".to_string(),
-                    )
-                };
+                let (last_used_unix, status_str) = conn.get_status_fields(now, now_unix);
                 ConnectionStatus {
                     host: host.clone(),
                     last_used_timestamp: last_used_unix,
@@ -804,7 +787,7 @@ impl ConnectionPool {
     /// Gets or creates a connection to the specified host.
     pub async fn get_connection(&self, host: &str) -> Result<Arc<Handle<ClientHandler>>> {
         let real_host = {
-            let ssh_config = crate::ssh_config::load_ssh_config().unwrap_or_default();
+            let ssh_config = load_ssh_config().unwrap_or_default();
             let params = ssh_config.query(host);
             params.host_name.as_deref().unwrap_or(host).to_string()
         };
@@ -1020,7 +1003,7 @@ impl ConnectionPool {
         command: &str,
         quiet: bool,
         progress_interval_secs: u64,
-        log_path: std::path::PathBuf,
+        log_path: PathBuf,
     ) -> Result<(String, String, u32)> {
         let handle = self.get_connection(host).await?;
         let _guard = self.start_operation(host).await;
@@ -1142,7 +1125,7 @@ mod tests {
                 "uptime && docker ps",
                 true,
                 5,
-                std::path::PathBuf::from("/tmp/test.log"),
+                PathBuf::from("/tmp/test.log"),
             )
             .await
         {
@@ -1416,31 +1399,9 @@ mod tests {
         let mut cfg = load_config_from_str(legacy_content).unwrap();
         assert_eq!(cfg.custom_tools.len(), 2);
 
-        // Perform migration manually since load_config_from_str doesn't mutate/write
-        let legacy_tools = std::mem::take(&mut cfg.custom_tools);
-        for custom in legacy_tools {
-            let mut command_str = custom.command.clone();
-            let mut params = HashMap::new();
-            if command_str.contains("{args}") {
-                command_str = command_str.replace("{args}", "{{args}}");
-                params.insert(
-                    "args".to_string(),
-                    ParamInfo {
-                        validation: "permissive".to_string(),
-                    },
-                );
-            }
-            cfg.tools.insert(
-                custom.name,
-                PreparedTool {
-                    description: custom.description,
-                    command: CommandTemplate::Simple(command_str),
-                    allow_shell: true,
-                    allow_hosts: Vec::new(),
-                    params,
-                },
-            );
-        }
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join(".agentic_ssh.toml");
+        migrate_legacy_tools(&mut cfg, &path);
 
         assert_eq!(cfg.custom_tools.len(), 0);
         assert_eq!(cfg.tools.len(), 2);

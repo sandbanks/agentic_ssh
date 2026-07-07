@@ -106,10 +106,6 @@ impl AgentIntegration for KiroIntegration {
         "kiro"
     }
 
-    fn supports_local(&self) -> bool {
-        true
-    }
-
     fn install(&self, ctx: &InstallContext) -> Result<()> {
         let base = kiro_base(ctx);
         std::fs::create_dir_all(&base).ok();
@@ -169,10 +165,6 @@ impl AgentIntegration for KiroIntegration {
         kiro_home(home).is_dir()
     }
 
-    fn primary_config_path(&self, home: &Path) -> Option<PathBuf> {
-        Some(mcp_config_path(home))
-    }
-
     fn has_agentic_ssh(&self, home: &Path) -> bool {
         let path = mcp_config_path(home);
         if !path.exists() {
@@ -192,6 +184,14 @@ impl AgentIntegration for KiroIntegration {
         } else {
             false
         }
+    }
+
+    fn supports_local(&self) -> bool {
+        true
+    }
+
+    fn primary_config_path(&self, home: &Path) -> Option<PathBuf> {
+        Some(mcp_config_path(home))
     }
 }
 

@@ -473,6 +473,23 @@ fn draw_ui(f: &mut ratatui::Frame, state: &WatchState) {
     }
 }
 
+fn propagate_signals(
+    channel_slots: Vec<Arc<Mutex<Option<russh::ChannelWriteHalf<russh::client::Msg>>>>>,
+) {
+    tokio::spawn(async move {
+        for slot in channel_slots {
+            let mut chan_opt = {
+                let mut guard = slot.lock().unwrap();
+                guard.take()
+            };
+            if let Some(ref mut channel) = chan_opt {
+                let _ = channel.signal(russh::Sig::INT).await;
+                let _ = channel.signal(russh::Sig::TERM).await;
+            }
+        }
+    });
+}
+
 #[allow(clippy::collapsible_if)]
 pub async fn run_watch(target: &str, command: &str) -> Result<()> {
     crate::ssh_pool::SILENT_CONNECTION_LOGS.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -558,53 +575,29 @@ pub async fn run_watch(target: &str, command: &str) -> Result<()> {
                 if let Ok(Ok(true)) = res {
                     if let Event::Key(key) = event::read()? {
                         if key.code == KeyCode::Char('c') && key.modifiers.contains(event::KeyModifiers::CONTROL) {
-                            let mut s = state.lock().unwrap();
+                            let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
                             if s.is_teardown {
                                 break;
                             } else {
                                 s.is_teardown = true;
                                 s.first_ctrl_c = true;
-                                let slots_clone = channel_slots.clone();
-                                tokio::spawn(async move {
-                                    for slot in slots_clone {
-                                        let mut chan_opt = {
-                                            let mut guard = slot.lock().unwrap();
-                                            guard.take()
-                                        };
-                                        if let Some(ref mut channel) = chan_opt {
-                                            let _ = channel.signal(russh::Sig::INT).await;
-                                            let _ = channel.signal(russh::Sig::TERM).await;
-                                        }
-                                    }
-                                });
+                                propagate_signals(channel_slots.clone());
                             }
                         } else if key.code == KeyCode::Esc || key.code == KeyCode::Char('q') {
-                            let mut s = state.lock().unwrap();
+                            let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
                             if !s.is_teardown {
                                 s.is_teardown = true;
-                                let slots_clone = channel_slots.clone();
-                                tokio::spawn(async move {
-                                    for slot in slots_clone {
-                                        let mut chan_opt = {
-                                            let mut guard = slot.lock().unwrap();
-                                            guard.take()
-                                        };
-                                        if let Some(ref mut channel) = chan_opt {
-                                            let _ = channel.signal(russh::Sig::INT).await;
-                                            let _ = channel.signal(russh::Sig::TERM).await;
-                                        }
-                                    }
-                                });
+                                propagate_signals(channel_slots.clone());
                             } else {
                                 break;
                             }
                         } else if key.code == KeyCode::Down || key.code == KeyCode::Char('j') {
-                            let mut s = state.lock().unwrap();
+                            let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
                             if s.selected_index + 1 < s.hosts.len() {
                                 s.selected_index += 1;
                             }
                         } else if key.code == KeyCode::Up || key.code == KeyCode::Char('k') {
-                            let mut s = state.lock().unwrap();
+                            let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
                             if s.selected_index > 0 {
                                 s.selected_index -= 1;
                             }

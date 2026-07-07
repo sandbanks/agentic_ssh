@@ -667,31 +667,7 @@ impl McpServer {
                 }
             };
 
-            if is_multi {
-                let results = execute_on_hosts(hosts, 15, run_custom).await?;
-                let text = serde_json::to_string_pretty(&results)?;
-                return Ok(serde_json::json!({
-                    "content": [{ "type": "text", "text": text }],
-                    "isError": false
-                }));
-            } else {
-                let host = &hosts[0];
-                match run_custom(host.to_string()).await {
-                    Ok(stdout_val) => {
-                        let text = stdout_val.as_str().unwrap_or("").to_string();
-                        return Ok(serde_json::json!({
-                            "content": [{ "type": "text", "text": text }],
-                            "isError": false
-                        }));
-                    }
-                    Err(e) => {
-                        return Ok(serde_json::json!({
-                            "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
-                            "isError": true
-                        }));
-                    }
-                }
-            }
+            return run_tool_on_hosts(hosts, is_multi, 15, run_custom).await;
         }
 
         match name {
@@ -774,29 +750,7 @@ impl McpServer {
                     }
                 };
 
-                if is_multi {
-                    let results = execute_on_hosts(hosts, 15, run_stats).await?;
-                    let text = serde_json::to_string_pretty(&results)?;
-                    Ok(serde_json::json!({
-                        "content": [{ "type": "text", "text": text }],
-                        "isError": false
-                    }))
-                } else {
-                    let host = &hosts[0];
-                    match run_stats(host.to_string()).await {
-                        Ok(stats_val) => {
-                            let text = serde_json::to_string_pretty(&stats_val)?;
-                            Ok(serde_json::json!({
-                                "content": [{ "type": "text", "text": text }],
-                                "isError": false
-                            }))
-                        }
-                        Err(e) => Ok(serde_json::json!({
-                            "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
-                            "isError": true
-                        })),
-                    }
-                }
+                run_tool_on_hosts(hosts, is_multi, 15, run_stats).await
             }
             "list_ports" => {
                 let (hosts, is_multi) = parse_hosts(&arguments)?;
@@ -833,29 +787,7 @@ impl McpServer {
                     }
                 };
 
-                if is_multi {
-                    let results = execute_on_hosts(hosts, 15, run_ports).await?;
-                    let text = serde_json::to_string_pretty(&results)?;
-                    Ok(serde_json::json!({
-                        "content": [{ "type": "text", "text": text }],
-                        "isError": false
-                    }))
-                } else {
-                    let host = &hosts[0];
-                    match run_ports(host.to_string()).await {
-                        Ok(ports_val) => {
-                            let text = serde_json::to_string_pretty(&ports_val)?;
-                            Ok(serde_json::json!({
-                                "content": [{ "type": "text", "text": text }],
-                                "isError": false
-                            }))
-                        }
-                        Err(e) => Ok(serde_json::json!({
-                            "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
-                            "isError": true
-                        })),
-                    }
-                }
+                run_tool_on_hosts(hosts, is_multi, 15, run_ports).await
             }
             "run_command" => {
                 let (hosts, is_multi) = parse_hosts(&arguments)?;
@@ -1077,29 +1009,7 @@ impl McpServer {
                     }
                 };
 
-                if is_multi {
-                    let results = execute_on_hosts(hosts, 15, run_search).await?;
-                    let text = serde_json::to_string_pretty(&results)?;
-                    Ok(serde_json::json!({
-                        "content": [{ "type": "text", "text": text }],
-                        "isError": false
-                    }))
-                } else {
-                    let host = &hosts[0];
-                    match run_search(host.to_string()).await {
-                        Ok(results_val) => {
-                            let text = serde_json::to_string_pretty(&results_val)?;
-                            Ok(serde_json::json!({
-                                "content": [{ "type": "text", "text": text }],
-                                "isError": false
-                            }))
-                        }
-                        Err(e) => Ok(serde_json::json!({
-                            "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
-                            "isError": true
-                        })),
-                    }
-                }
+                run_tool_on_hosts(hosts, is_multi, 15, run_search).await
             }
             "tail_log" => {
                 let (hosts, is_multi) = parse_hosts(&arguments)?;
@@ -1142,29 +1052,7 @@ impl McpServer {
                     }
                 };
 
-                if is_multi {
-                    let results = execute_on_hosts(hosts, 15, run_tail).await?;
-                    let text = serde_json::to_string_pretty(&results)?;
-                    Ok(serde_json::json!({
-                        "content": [{ "type": "text", "text": text }],
-                        "isError": false
-                    }))
-                } else {
-                    let host = &hosts[0];
-                    match run_tail(host.to_string()).await {
-                        Ok(stdout_val) => {
-                            let text = stdout_val.as_str().unwrap_or("").to_string();
-                            Ok(serde_json::json!({
-                                "content": [{ "type": "text", "text": text }],
-                                "isError": false
-                            }))
-                        }
-                        Err(e) => Ok(serde_json::json!({
-                            "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
-                            "isError": true
-                        })),
-                    }
-                }
+                run_tool_on_hosts(hosts, is_multi, 15, run_tail).await
             }
             "tail_container_logs" => {
                 let (hosts, is_multi) = parse_hosts(&arguments)?;
@@ -1219,29 +1107,7 @@ impl McpServer {
                     }
                 };
 
-                if is_multi {
-                    let results = execute_on_hosts(hosts, 15, run_container_logs).await?;
-                    let text = serde_json::to_string_pretty(&results)?;
-                    Ok(serde_json::json!({
-                        "content": [{ "type": "text", "text": text }],
-                        "isError": false
-                    }))
-                } else {
-                    let host = &hosts[0];
-                    match run_container_logs(host.to_string()).await {
-                        Ok(stdout_val) => {
-                            let text = stdout_val.as_str().unwrap_or("").to_string();
-                            Ok(serde_json::json!({
-                                "content": [{ "type": "text", "text": text }],
-                                "isError": false
-                            }))
-                        }
-                        Err(e) => Ok(serde_json::json!({
-                            "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
-                            "isError": true
-                        })),
-                    }
-                }
+                run_tool_on_hosts(hosts, is_multi, 15, run_container_logs).await
             }
             "wait_for_log_pattern" => {
                 let (hosts, is_multi) = parse_hosts(&arguments)?;
@@ -1331,48 +1197,20 @@ impl McpServer {
                                 match tokio::time::timeout(sleep_duration, channel.wait()).await {
                                     Ok(Some(russh::ChannelMsg::Data { data })) => {
                                         stdout_buf.extend_from_slice(&data);
-
-                                        let mut found = false;
-                                        while let Some(pos) =
-                                            stdout_buf.iter().position(|&b| b == b'\n')
+                                        if let Some(matched) =
+                                            find_matched_line(&mut stdout_buf, &re)
                                         {
-                                            let line_bytes: Vec<u8> =
-                                                stdout_buf.drain(..=pos).collect();
-                                            let line_str = String::from_utf8_lossy(
-                                                &line_bytes[..line_bytes.len() - 1],
-                                            )
-                                            .into_owned();
-                                            if re.is_match(&line_str) {
-                                                matched_line = Some(line_str);
-                                                found = true;
-                                                break;
-                                            }
-                                        }
-                                        if found {
+                                            matched_line = Some(matched);
                                             break;
                                         }
                                     }
                                     Ok(Some(russh::ChannelMsg::ExtendedData { data, ext })) => {
                                         if ext == 1 {
                                             stdout_buf.extend_from_slice(&data);
-
-                                            let mut found = false;
-                                            while let Some(pos) =
-                                                stdout_buf.iter().position(|&b| b == b'\n')
+                                            if let Some(matched) =
+                                                find_matched_line(&mut stdout_buf, &re)
                                             {
-                                                let line_bytes: Vec<u8> =
-                                                    stdout_buf.drain(..=pos).collect();
-                                                let line_str = String::from_utf8_lossy(
-                                                    &line_bytes[..line_bytes.len() - 1],
-                                                )
-                                                .into_owned();
-                                                if re.is_match(&line_str) {
-                                                    matched_line = Some(line_str);
-                                                    found = true;
-                                                    break;
-                                                }
-                                            }
-                                            if found {
+                                                matched_line = Some(matched);
                                                 break;
                                             }
                                         }
@@ -1775,7 +1613,7 @@ pub fn resolve_hosts(
     result
 }
 
-pub fn parse_hosts(arguments: &serde_json::Value) -> anyhow::Result<(Vec<String>, bool)> {
+pub fn parse_hosts(arguments: &serde_json::Value) -> Result<(Vec<String>, bool)> {
     let config = crate::ssh_pool::load_config();
     let groups = &config.groups;
 
@@ -1808,22 +1646,72 @@ pub fn parse_hosts(arguments: &serde_json::Value) -> anyhow::Result<(Vec<String>
     }
 }
 
+fn find_matched_line(buf: &mut Vec<u8>, re: &regex::Regex) -> Option<String> {
+    while let Some(pos) = buf.iter().position(|&b| b == b'\n') {
+        let line_bytes: Vec<u8> = buf.drain(..=pos).collect();
+        let line_str = String::from_utf8_lossy(&line_bytes[..line_bytes.len() - 1]).into_owned();
+        if re.is_match(&line_str) {
+            return Some(line_str);
+        }
+    }
+    None
+}
+
+async fn run_tool_on_hosts<F, Fut>(
+    hosts: Vec<String>,
+    is_multi: bool,
+    timeout_secs: u64,
+    f: F,
+) -> Result<serde_json::Value>
+where
+    F: Fn(String) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Result<serde_json::Value>> + Send,
+{
+    if is_multi {
+        let results = execute_on_hosts(hosts, timeout_secs, f).await?;
+        let text = serde_json::to_string_pretty(&results)?;
+        Ok(serde_json::json!({
+            "content": [{ "type": "text", "text": text }],
+            "isError": false
+        }))
+    } else {
+        let host = &hosts[0];
+        match f(host.to_string()).await {
+            Ok(val) => {
+                let text = if let serde_json::Value::String(s) = val {
+                    s
+                } else {
+                    serde_json::to_string_pretty(&val)?
+                };
+                Ok(serde_json::json!({
+                    "content": [{ "type": "text", "text": text }],
+                    "isError": false
+                }))
+            }
+            Err(e) => Ok(serde_json::json!({
+                "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
+                "isError": true
+            })),
+        }
+    }
+}
+
 pub async fn execute_on_hosts<F, Fut>(
     hosts: Vec<String>,
     timeout_secs: u64,
     f: F,
-) -> anyhow::Result<serde_json::Value>
+) -> Result<serde_json::Value>
 where
     F: Fn(String) -> Fut + Send + Sync + 'static,
-    Fut: std::future::Future<Output = anyhow::Result<serde_json::Value>> + Send,
+    Fut: Future<Output = Result<serde_json::Value>> + Send,
 {
     let mut join_set = tokio::task::JoinSet::new();
-    let f_arc = std::sync::Arc::new(f);
+    let f_arc = Arc::new(f);
     for host in hosts {
         let f_clone = f_arc.clone();
         join_set.spawn(async move {
             let fut = f_clone(host.clone());
-            let timeout_dur = std::time::Duration::from_secs(timeout_secs);
+            let timeout_dur = Duration::from_secs(timeout_secs);
             let result = tokio::time::timeout(timeout_dur, fut).await;
 
             let payload = match result {
@@ -2071,7 +1959,7 @@ udp   UNCONN 0      0            0.0.0.0:53          0.0.0.0:*     users:((\"nam
 
     #[tokio::test]
     async fn test_list_groups_tool() {
-        let server = McpServer::new(std::time::Duration::from_secs(300));
+        let server = McpServer::new(Duration::from_secs(300));
         let params = serde_json::json!({
             "name": "list_groups",
             "arguments": {}

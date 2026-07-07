@@ -85,10 +85,6 @@ impl AgentIntegration for ClineIntegration {
         cline_ext_dir(home).is_dir()
     }
 
-    fn primary_config_path(&self, home: &Path) -> Option<PathBuf> {
-        Some(cline_ext_dir(home).join("settings/cline_mcp_settings.json"))
-    }
-
     fn has_agentic_ssh(&self, home: &Path) -> bool {
         let settings_path = cline_ext_dir(home).join("settings/cline_mcp_settings.json");
         if !settings_path.exists() {
@@ -108,6 +104,10 @@ impl AgentIntegration for ClineIntegration {
         } else {
             false
         }
+    }
+
+    fn primary_config_path(&self, home: &Path) -> Option<PathBuf> {
+        Some(cline_ext_dir(home).join("settings/cline_mcp_settings.json"))
     }
 }
 

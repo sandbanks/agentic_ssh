@@ -89,10 +89,6 @@ impl AgentIntegration for KiloIntegration {
         kilo_config_dir(home).is_dir()
     }
 
-    fn primary_config_path(&self, home: &Path) -> Option<std::path::PathBuf> {
-        Some(kilo_config_path(home))
-    }
-
     fn has_agentic_ssh(&self, home: &Path) -> bool {
         let config_path = kilo_config_path(home);
         if !config_path.exists() {
@@ -114,6 +110,10 @@ impl AgentIntegration for KiloIntegration {
         } else {
             false
         }
+    }
+
+    fn primary_config_path(&self, home: &Path) -> Option<std::path::PathBuf> {
+        Some(kilo_config_path(home))
     }
 }
 

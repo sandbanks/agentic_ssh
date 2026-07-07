@@ -99,10 +99,6 @@ impl AgentIntegration for PiIntegration {
         mcp_path.exists() || mcp_path.parent().is_some_and(Path::is_dir)
     }
 
-    fn primary_config_path(&self, home: &Path) -> Option<PathBuf> {
-        Some(pi_config_path(home))
-    }
-
     fn has_agentic_ssh(&self, home: &Path) -> bool {
         let mcp_path = pi_config_path(home);
         if !mcp_path.exists() {
@@ -122,6 +118,10 @@ impl AgentIntegration for PiIntegration {
         } else {
             false
         }
+    }
+
+    fn primary_config_path(&self, home: &Path) -> Option<PathBuf> {
+        Some(pi_config_path(home))
     }
 }
 

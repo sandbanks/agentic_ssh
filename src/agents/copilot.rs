@@ -35,10 +35,7 @@ impl AgentIntegration for CopilotIntegration {
         install_vscode_mcp_server(&vscode_settings_path, &ctx.agentic_ssh_bin)?;
         let insiders_settings_path =
             super::vscode_insiders_data_dir(&ctx.home).join("User/settings.json");
-        if insiders_settings_path
-            .parent()
-            .is_some_and(std::path::Path::exists)
-        {
+        if insiders_settings_path.parent().is_some_and(Path::exists) {
             install_vscode_mcp_server(&insiders_settings_path, &ctx.agentic_ssh_bin)?;
         }
         install_cli_mcp_server(&cli_settings_path, &ctx.agentic_ssh_bin)?;
@@ -108,10 +105,6 @@ impl AgentIntegration for CopilotIntegration {
             || super::copilot_cli_dir(home).is_dir()
     }
 
-    fn primary_config_path(&self, home: &Path) -> Option<std::path::PathBuf> {
-        Some(super::vscode_data_dir(home).join("User/settings.json"))
-    }
-
     fn has_agentic_ssh(&self, home: &Path) -> bool {
         let vscode_settings_path = super::vscode_data_dir(home).join("User/settings.json");
         let insiders_settings_path =
@@ -173,6 +166,10 @@ impl AgentIntegration for CopilotIntegration {
         check_vscode(&vscode_settings_path)
             && check_vscode(&insiders_settings_path)
             && check_cli(&cli_settings_path)
+    }
+
+    fn primary_config_path(&self, home: &Path) -> Option<std::path::PathBuf> {
+        Some(super::vscode_data_dir(home).join("User/settings.json"))
     }
 }
 

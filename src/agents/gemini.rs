@@ -29,10 +29,6 @@ impl AgentIntegration for GeminiIntegration {
         "gemini"
     }
 
-    fn supports_local(&self) -> bool {
-        true
-    }
-
     fn install(&self, ctx: &InstallContext) -> Result<()> {
         let gemini_dir = ctx.base_dir().join(".gemini");
         std::fs::create_dir_all(&gemini_dir).ok();
@@ -74,16 +70,12 @@ impl AgentIntegration for GeminiIntegration {
         home.join(".gemini").is_dir()
     }
 
-    fn primary_config_path(&self, home: &Path) -> Option<std::path::PathBuf> {
-        Some(home.join(".gemini/settings.json"))
-    }
-
     fn has_agentic_ssh(&self, home: &Path) -> bool {
         let settings = home.join(".gemini").join("settings.json");
         if !settings.exists() {
             return false;
         }
-        let json = super::load_json_file(&settings);
+        let json = load_json_file(&settings);
         if let Some(agentic_ssh) = json.get("mcpServers").and_then(|v| v.get("agentic_ssh")) {
             if let Some(current_bin) = super::which_agentic_ssh() {
                 let cmd = agentic_ssh
@@ -97,6 +89,14 @@ impl AgentIntegration for GeminiIntegration {
         } else {
             false
         }
+    }
+
+    fn supports_local(&self) -> bool {
+        true
+    }
+
+    fn primary_config_path(&self, home: &Path) -> Option<std::path::PathBuf> {
+        Some(home.join(".gemini/settings.json"))
     }
 }
 

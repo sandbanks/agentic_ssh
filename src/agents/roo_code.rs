@@ -41,10 +41,6 @@ impl AgentIntegration for RooCodeIntegration {
         "roo-code"
     }
 
-    fn supports_local(&self) -> bool {
-        true
-    }
-
     fn install(&self, ctx: &InstallContext) -> Result<()> {
         let settings_path = roo_settings_path(ctx);
 
@@ -99,10 +95,6 @@ impl AgentIntegration for RooCodeIntegration {
         roo_ext_dir(home).is_dir()
     }
 
-    fn primary_config_path(&self, home: &Path) -> Option<PathBuf> {
-        Some(roo_ext_dir(home).join("settings/cline_mcp_settings.json"))
-    }
-
     fn has_agentic_ssh(&self, home: &Path) -> bool {
         let settings_path = roo_ext_dir(home).join("settings/cline_mcp_settings.json");
         if !settings_path.exists() {
@@ -122,6 +114,14 @@ impl AgentIntegration for RooCodeIntegration {
         } else {
             false
         }
+    }
+
+    fn supports_local(&self) -> bool {
+        true
+    }
+
+    fn primary_config_path(&self, home: &Path) -> Option<PathBuf> {
+        Some(roo_ext_dir(home).join("settings/cline_mcp_settings.json"))
     }
 }
 

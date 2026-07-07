@@ -121,10 +121,6 @@ impl AgentIntegration for AntigravityIntegration {
         home.join(".gemini/antigravity").is_dir() || home.join(".gemini/antigravity-cli").is_dir()
     }
 
-    fn primary_config_path(&self, home: &Path) -> Option<std::path::PathBuf> {
-        Some(mcp_config_path(home))
-    }
-
     fn has_agentic_ssh(&self, home: &Path) -> bool {
         let current_bin = super::which_agentic_ssh();
         let check_file = |path: &Path| -> bool {
@@ -158,6 +154,10 @@ impl AgentIntegration for AntigravityIntegration {
             any_checked = true;
         }
         any_checked && ok
+    }
+
+    fn primary_config_path(&self, home: &Path) -> Option<std::path::PathBuf> {
+        Some(mcp_config_path(home))
     }
 }
 

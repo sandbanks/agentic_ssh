@@ -48,10 +48,6 @@ impl AgentIntegration for ZedIntegration {
         "zed"
     }
 
-    fn supports_local(&self) -> bool {
-        true
-    }
-
     fn install(&self, ctx: &InstallContext) -> Result<()> {
         let settings_path = zed_settings_path(ctx);
 
@@ -107,10 +103,6 @@ impl AgentIntegration for ZedIntegration {
         zed_config_dir(home).is_dir()
     }
 
-    fn primary_config_path(&self, home: &Path) -> Option<std::path::PathBuf> {
-        Some(zed_config_dir(home).join("settings.json"))
-    }
-
     fn has_agentic_ssh(&self, home: &Path) -> bool {
         let settings_path = zed_config_dir(home).join("settings.json");
         if !settings_path.exists() {
@@ -133,6 +125,14 @@ impl AgentIntegration for ZedIntegration {
         } else {
             false
         }
+    }
+
+    fn supports_local(&self) -> bool {
+        true
+    }
+
+    fn primary_config_path(&self, home: &Path) -> Option<PathBuf> {
+        Some(zed_config_dir(home).join("settings.json"))
     }
 }
 

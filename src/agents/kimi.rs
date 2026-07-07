@@ -72,10 +72,6 @@ impl AgentIntegration for KimiIntegration {
         home.join(".kimi").is_dir()
     }
 
-    fn primary_config_path(&self, home: &Path) -> Option<std::path::PathBuf> {
-        Some(home.join(".kimi/mcp.json"))
-    }
-
     fn has_agentic_ssh(&self, home: &Path) -> bool {
         let mcp_path = home.join(".kimi/mcp.json");
         if !mcp_path.exists() {
@@ -95,6 +91,10 @@ impl AgentIntegration for KimiIntegration {
         } else {
             false
         }
+    }
+
+    fn primary_config_path(&self, home: &Path) -> Option<std::path::PathBuf> {
+        Some(home.join(".kimi/mcp.json"))
     }
 }
 

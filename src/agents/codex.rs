@@ -70,10 +70,6 @@ impl AgentIntegration for CodexIntegration {
         home.join(".codex").is_dir()
     }
 
-    fn primary_config_path(&self, home: &Path) -> Option<std::path::PathBuf> {
-        Some(home.join(".codex/config.toml"))
-    }
-
     fn has_agentic_ssh(&self, home: &Path) -> bool {
         let config = home.join(".codex").join("config.toml");
         if !config.exists() {
@@ -81,7 +77,7 @@ impl AgentIntegration for CodexIntegration {
         }
         // If the file is unparseable, conservatively report "not installed"
         // so the caller treats it like a fresh install path.
-        super::load_toml_file(&config).is_ok_and(|toml| {
+        load_toml_file(&config).is_ok_and(|toml| {
             if let Some(agentic_ssh) = toml.get("mcp_servers").and_then(|v| v.get("agentic_ssh")) {
                 if let Some(current_bin) = super::which_agentic_ssh() {
                     let cmd = agentic_ssh
@@ -96,6 +92,10 @@ impl AgentIntegration for CodexIntegration {
                 false
             }
         })
+    }
+
+    fn primary_config_path(&self, home: &Path) -> Option<std::path::PathBuf> {
+        Some(home.join(".codex/config.toml"))
     }
 }
 
