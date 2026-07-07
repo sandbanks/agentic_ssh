@@ -364,9 +364,7 @@ fn run_tui() -> anyhow::Result<()> {
                 .unwrap_or_default()
                 .as_secs();
 
-            if let Some(statuses) = std::fs::File::open(path).ok().and_then(|file| {
-                serde_json::from_reader::<_, Vec<ssh_pool::ConnectionStatus>>(file).ok()
-            }) {
+            if let Some(statuses) = ssh_pool::load_connection_statuses(path) {
                 for status in statuses {
                     let elapsed_secs = now_unix.saturating_sub(status.last_used_timestamp);
                     let remaining_secs = status.idle_timeout_secs.saturating_sub(elapsed_secs);

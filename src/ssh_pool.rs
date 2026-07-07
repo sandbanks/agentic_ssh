@@ -618,6 +618,12 @@ pub struct ConnectionStatus {
     pub status: String,
 }
 
+pub fn load_connection_statuses(path: &Path) -> Option<Vec<ConnectionStatus>> {
+    std::fs::File::open(path).ok().and_then(|file| {
+        serde_json::from_reader(file).ok()
+    })
+}
+
 pub struct ConnectionPool {
     connections: Arc<Mutex<HashMap<String, SshConnection>>>,
     idle_timeout: Duration,

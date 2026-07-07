@@ -122,9 +122,7 @@ fn check_daemon_status(dc: &mut DoctorCounters) {
 
     if daemon_active {
         dc.pass("agentic_ssh daemon/MCP server is currently running");
-        if let Some(statuses) = std::fs::File::open(path).ok().and_then(|file| {
-            serde_json::from_reader::<_, Vec<ssh_pool::ConnectionStatus>>(file).ok()
-        }) {
+        if let Some(statuses) = ssh_pool::load_connection_statuses(path) {
             let active_count = statuses.len();
             dc.pass(&format!(
                 "Found {active_count} connection(s) in active pool status"
