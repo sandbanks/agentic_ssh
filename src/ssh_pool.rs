@@ -619,9 +619,9 @@ pub struct ConnectionStatus {
 }
 
 pub fn load_connection_statuses(path: &Path) -> Option<Vec<ConnectionStatus>> {
-    std::fs::File::open(path).ok().and_then(|file| {
-        serde_json::from_reader(file).ok()
-    })
+    std::fs::File::open(path)
+        .ok()
+        .and_then(|file| serde_json::from_reader(file).ok())
 }
 
 pub fn is_daemon_active(path: &Path) -> bool {
