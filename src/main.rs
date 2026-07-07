@@ -1,5 +1,4 @@
 use mimalloc::MiMalloc;
-use std::path::Path;
 use std::{path::PathBuf, time::Duration};
 
 #[global_allocator]
@@ -353,7 +352,7 @@ fn run_tui() -> anyhow::Result<()> {
     let path = path_buf.as_path();
 
     loop {
-        let daemon_active = is_dameon_active(path);
+        let daemon_active = ssh_pool::is_daemon_active(path);
 
         let mut active_connections = Vec::new();
         let mut max_host_len = 30; // Default / minimum Host column width
@@ -464,15 +463,6 @@ fn run_tui() -> anyhow::Result<()> {
         let _ = std::io::Write::flush(&mut std::io::stdout());
         std::thread::sleep(Duration::from_secs(1));
     }
-}
-
-pub fn is_dameon_active(path: &Path) -> bool {
-    std::fs::metadata(path)
-        .ok()
-        .and_then(|m| m.modified().ok())
-        .and_then(|t| t.elapsed().ok())
-        .map(|e| e.as_secs() < 15)
-        .unwrap_or(false)
 }
 
 fn auto_install_if_needed() -> anyhow::Result<()> {

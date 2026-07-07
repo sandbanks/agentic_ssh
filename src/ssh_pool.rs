@@ -624,6 +624,15 @@ pub fn load_connection_statuses(path: &Path) -> Option<Vec<ConnectionStatus>> {
     })
 }
 
+pub fn is_daemon_active(path: &Path) -> bool {
+    std::fs::metadata(path)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.elapsed().ok())
+        .map(|e| e.as_secs() < 15)
+        .unwrap_or(false)
+}
+
 pub struct ConnectionPool {
     connections: Arc<Mutex<HashMap<String, SshConnection>>>,
     idle_timeout: Duration,
