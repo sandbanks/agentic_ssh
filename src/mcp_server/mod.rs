@@ -21,6 +21,7 @@ pub enum Id {
 
 #[derive(Deserialize, Debug)]
 pub struct JsonRpcRequest {
+    #[allow(dead_code)]
     pub jsonrpc: String,
     pub id: Option<Id>,
     pub method: String,
@@ -552,7 +553,7 @@ impl McpServer {
                     }
                     if !tool.allow_shell {
                         return Ok(serde_json::json!({
-                            "content": [{ "type": "text", "text": format!("Error interpolating command: Array template format requires allow_shell = true") }],
+                            "content": [{ "type": "text", "text": "Error interpolating command: Array template format requires allow_shell = true".to_string() }],
                             "isError": true
                         }));
                     }
