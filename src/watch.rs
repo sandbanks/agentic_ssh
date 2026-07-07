@@ -473,6 +473,7 @@ fn draw_ui(f: &mut ratatui::Frame, state: &WatchState) {
     }
 }
 
+#[allow(clippy::collapsible_if)]
 pub async fn run_watch(target: &str, command: &str) -> Result<()> {
     crate::ssh_pool::SILENT_CONNECTION_LOGS.store(true, std::sync::atomic::Ordering::Relaxed);
     let config = crate::ssh_pool::load_config();

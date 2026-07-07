@@ -4,8 +4,8 @@
 //! Checks the binary, SSH client, SSH config, pool daemon status, and agent integrations.
 
 use crate::agents::{self, DoctorCounters, HealthcheckContext};
-use crate::ssh_config;
 use crate::ssh_pool;
+use crate::{is_dameon_active, ssh_config};
 use std::path::PathBuf;
 
 /// Runs a comprehensive health check of the agentic_ssh installation.
@@ -118,12 +118,7 @@ fn check_daemon_status(dc: &mut DoctorCounters) {
     let path_buf = ssh_pool::get_pool_status_path();
     let path = path_buf.as_path();
 
-    let daemon_active = std::fs::metadata(path)
-        .ok()
-        .and_then(|m| m.modified().ok())
-        .and_then(|t| t.elapsed().ok())
-        .map(|e| e.as_secs() < 15)
-        .unwrap_or(false);
+    let daemon_active = is_dameon_active(path);
 
     if daemon_active {
         dc.pass("agentic_ssh daemon/MCP server is currently running");

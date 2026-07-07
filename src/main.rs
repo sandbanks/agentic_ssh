@@ -1,4 +1,5 @@
 use mimalloc::MiMalloc;
+use std::path::Path;
 use std::{path::PathBuf, time::Duration};
 
 #[global_allocator]
@@ -129,13 +130,13 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     // Store CLI overrides globally
-    let _ = crate::ssh_pool::CLI_OVERRIDE.set(crate::ssh_pool::CliOverride {
+    let _ = ssh_pool::CLI_OVERRIDE.set(ssh_pool::CliOverride {
         config_path: cli.config.clone(),
         no_global: cli.no_global,
     });
 
     // Run configuration loading and validation check immediately upon startup
-    let _ = crate::ssh_pool::load_config();
+    let _ = ssh_pool::load_config();
 
     // GUARDRAIL 1: Protect explicit config override paths and trust commands from agent injection
     if cli.config.is_some() || cli.no_global || matches!(cli.command, Some(Commands::Trust { .. }))
@@ -165,23 +166,23 @@ async fn main() -> anyhow::Result<()> {
             watch::run_watch(&target, &command).await?;
         }
         Some(Commands::Install { agent, local }) => {
-            let home = crate::agents::home_dir()
+            let home = agents::home_dir()
                 .ok_or_else(|| anyhow::anyhow!("Could not determine user's home directory"))?;
-            let agentic_ssh_bin = crate::agents::which_agentic_ssh().ok_or_else(|| {
+            let agentic_ssh_bin = agents::which_agentic_ssh().ok_or_else(|| {
                 anyhow::anyhow!(
                     "Could not locate the `agentic_ssh` binary in PATH or current directory"
                 )
             })?;
-            let tool_permissions = crate::agents::expected_tool_perms();
+            let tool_permissions = agents::expected_tool_perms();
 
             let scope = if local {
                 let project_path = std::env::current_dir()?;
-                crate::agents::InstallScope::Local { project_path }
+                agents::InstallScope::Local { project_path }
             } else {
-                crate::agents::InstallScope::Global
+                agents::InstallScope::Global
             };
 
-            let ctx = crate::agents::InstallContext {
+            let ctx = agents::InstallContext {
                 home,
                 agentic_ssh_bin,
                 tool_permissions,
@@ -191,7 +192,7 @@ async fn main() -> anyhow::Result<()> {
             if let Some(opt) = agent {
                 let id = opt.to_str();
                 let integration =
-                    crate::agents::get_integration(id).map_err(|e| anyhow::anyhow!("{}", e))?;
+                    agents::get_integration(id).map_err(|e| anyhow::anyhow!("{}", e))?;
                 if local && !integration.supports_local() {
                     anyhow::bail!(
                         "Agent '{}' does not support project-scoped (--local) installation.",
@@ -211,7 +212,7 @@ async fn main() -> anyhow::Result<()> {
                 );
             } else {
                 // Auto-detect
-                let all = crate::agents::all_integrations();
+                let all = agents::all_integrations();
                 let mut detected = Vec::new();
                 for integration in all {
                     if integration.is_detected(&ctx.home)
@@ -251,20 +252,20 @@ async fn main() -> anyhow::Result<()> {
             }
         }
         Some(Commands::Uninstall { agent, local }) => {
-            let home = crate::agents::home_dir()
+            let home = agents::home_dir()
                 .ok_or_else(|| anyhow::anyhow!("Could not determine user's home directory"))?;
             let agentic_ssh_bin =
-                crate::agents::which_agentic_ssh().unwrap_or_else(|| "agentic_ssh".to_string());
-            let tool_permissions = crate::agents::expected_tool_perms();
+                agents::which_agentic_ssh().unwrap_or_else(|| "agentic_ssh".to_string());
+            let tool_permissions = agents::expected_tool_perms();
 
             let scope = if local {
                 let project_path = std::env::current_dir()?;
-                crate::agents::InstallScope::Local { project_path }
+                agents::InstallScope::Local { project_path }
             } else {
-                crate::agents::InstallScope::Global
+                agents::InstallScope::Global
             };
 
-            let ctx = crate::agents::InstallContext {
+            let ctx = agents::InstallContext {
                 home,
                 agentic_ssh_bin,
                 tool_permissions,
@@ -274,7 +275,7 @@ async fn main() -> anyhow::Result<()> {
             if let Some(opt) = agent {
                 let id = opt.to_str();
                 let integration =
-                    crate::agents::get_integration(id).map_err(|e| anyhow::anyhow!("{}", e))?;
+                    agents::get_integration(id).map_err(|e| anyhow::anyhow!("{}", e))?;
                 if local && !integration.supports_local() {
                     anyhow::bail!(
                         "Agent '{}' does not support project-scoped (--local) installation.",
@@ -294,7 +295,7 @@ async fn main() -> anyhow::Result<()> {
                 );
             } else {
                 // Auto-detect
-                let all = crate::agents::all_integrations();
+                let all = agents::all_integrations();
                 let mut detected = Vec::new();
                 for integration in all {
                     if integration.is_detected(&ctx.home)
@@ -352,12 +353,7 @@ fn run_tui() -> anyhow::Result<()> {
     let path = path_buf.as_path();
 
     loop {
-        let daemon_active = std::fs::metadata(path)
-            .ok()
-            .and_then(|m| m.modified().ok())
-            .and_then(|t| t.elapsed().ok())
-            .map(|e| e.as_secs() < 15)
-            .unwrap_or(false);
+        let daemon_active = is_dameon_active(path);
 
         let mut active_connections = Vec::new();
         let mut max_host_len = 30; // Default / minimum Host column width
@@ -472,22 +468,31 @@ fn run_tui() -> anyhow::Result<()> {
     }
 }
 
+pub fn is_dameon_active(path: &Path) -> bool {
+    std::fs::metadata(path)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.elapsed().ok())
+        .map(|e| e.as_secs() < 15)
+        .unwrap_or(false)
+}
+
 fn auto_install_if_needed() -> anyhow::Result<()> {
-    let home = crate::agents::home_dir()
+    let home = agents::home_dir()
         .ok_or_else(|| anyhow::anyhow!("Could not determine user's home directory"))?;
-    let agentic_ssh_bin = match crate::agents::which_agentic_ssh() {
+    let agentic_ssh_bin = match agents::which_agentic_ssh() {
         Some(bin) => bin,
         None => return Ok(()),
     };
-    let tool_permissions = crate::agents::expected_tool_perms();
-    let ctx = crate::agents::InstallContext {
+    let tool_permissions = agents::expected_tool_perms();
+    let ctx = agents::InstallContext {
         home: home.clone(),
         agentic_ssh_bin,
         tool_permissions,
-        scope: crate::agents::InstallScope::Global,
+        scope: agents::InstallScope::Global,
     };
 
-    let all = crate::agents::all_integrations();
+    let all = agents::all_integrations();
     for integration in all {
         if integration.is_detected(&ctx.home) && !integration.has_agentic_ssh(&ctx.home) {
             eprintln!(
