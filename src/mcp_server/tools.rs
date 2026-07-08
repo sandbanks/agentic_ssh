@@ -65,7 +65,8 @@ pub async fn run_run_command(
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join(".agentic_ssh")
         .join("sessions");
-    std::fs::create_dir_all(&sessions_dir).ok();
+    std::fs::create_dir_all(&sessions_dir)
+        .with_context(|| format!("Failed to create sessions directory at {:?}", sessions_dir))?;
 
     let now_str = chrono::Local::now().format("%Y%m%d_%H%M").to_string();
     let nano_rand = std::time::SystemTime::now()
