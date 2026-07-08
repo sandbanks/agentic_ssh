@@ -1,6 +1,6 @@
 use anyhow::Result;
 use crossterm::{
-    event::{self, Event, KeyCode},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -14,7 +14,7 @@ impl Drop for TerminalGuard {
     fn drop(&mut self) {
         let _ = disable_raw_mode();
         let mut stdout = std::io::stdout();
-        let _ = execute!(stdout, LeaveAlternateScreen);
+        let _ = execute!(stdout, LeaveAlternateScreen, DisableMouseCapture);
     }
 }
 
@@ -32,6 +32,9 @@ pub struct WatchState {
     pub selected_index: usize,
     pub is_teardown: bool,
     pub first_ctrl_c: bool,
+    pub inspected_host: Option<String>,
+    pub inspected_logs: Vec<String>,
+    pub scroll_offset: usize,
 }
 
 struct LineBuffer {
@@ -350,7 +353,7 @@ fn draw_ui(f: &mut ratatui::Frame, state: &WatchState) {
     };
 
     let threshold = 6;
-    if state.hosts.len() > threshold {
+    if is_complete || state.hosts.len() > threshold {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(25), Constraint::Percentage(75)])
@@ -387,9 +390,18 @@ fn draw_ui(f: &mut ratatui::Frame, state: &WatchState) {
 
         if let Some(host) = state.hosts.get(state.selected_index) {
             let height = chunks[1].height as usize;
-            let log_len = host.log_lines.len();
-            let start = log_len.saturating_sub(height.saturating_sub(2));
-            let visible_lines = &host.log_lines[start..];
+            let visible_lines = if is_complete {
+                let total_lines = state.inspected_logs.len();
+                let viewport_height = height.saturating_sub(2);
+                let max_offset = total_lines.saturating_sub(viewport_height);
+                let start = state.scroll_offset.min(max_offset);
+                let end = (start + viewport_height).min(total_lines);
+                &state.inspected_logs[start..end]
+            } else {
+                let log_len = host.log_lines.len();
+                let start = log_len.saturating_sub(height.saturating_sub(2));
+                &host.log_lines[start..]
+            };
 
             let text = visible_lines.join("\n");
             let paragraph = Paragraph::new(text).block(
@@ -440,7 +452,25 @@ fn draw_ui(f: &mut ratatui::Frame, state: &WatchState) {
         let succeeded = state.hosts.iter().filter(|h| h.status == "Success").count();
         let failed = state.hosts.iter().filter(|h| h.status == "Failed").count();
 
-        let (status_text, style) = if failed > 0 {
+        let (status_text, style) = if is_complete {
+            if failed > 0 {
+                (
+                    " [Inspection Mode] Use Arrows to navigate/scroll logs. Press Esc or Ctrl+C to exit. ".to_string(),
+                    Style::default()
+                        .bg(Color::Red)
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD),
+                )
+            } else {
+                (
+                    " [Inspection Mode] Use Arrows to navigate/scroll logs. Press Esc or Ctrl+C to exit. ".to_string(),
+                    Style::default()
+                        .bg(Color::Green)
+                        .fg(Color::Black)
+                        .add_modifier(Modifier::BOLD),
+                )
+            }
+        } else if failed > 0 {
             (
                 format!(
                     " ✘ Execution complete. Succeeded: {}/{}, Failed: {}. Press Esc or Ctrl+C to exit. ",
@@ -530,6 +560,9 @@ pub async fn run_watch(target: &str, command: &str) -> Result<()> {
         selected_index: 0,
         is_teardown: false,
         first_ctrl_c: false,
+        inspected_host: None,
+        inspected_logs: Vec::new(),
+        scroll_offset: 0,
     }));
 
     let pool = Arc::new(crate::ssh_pool::ConnectionPool::new(Duration::from_secs(
@@ -556,7 +589,7 @@ pub async fn run_watch(target: &str, command: &str) -> Result<()> {
 
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     let _guard = TerminalGuard;
@@ -566,6 +599,28 @@ pub async fn run_watch(target: &str, command: &str) -> Result<()> {
     loop {
         tokio::select! {
             _ = interval.tick() => {
+                {
+                    let mut s = state.lock().unwrap();
+                    let is_complete = s.hosts.iter().all(|h| h.status != "Running");
+                    if is_complete {
+                        let sel_idx = s.selected_index;
+                        if let Some(host) = s.hosts.get(sel_idx) {
+                            let host_name = host.name.clone();
+                            let log_path = host.log_path.clone();
+                            if s.inspected_host.as_ref() != Some(&host_name) {
+                                if !log_path.as_os_str().is_empty() {
+                                    let content = std::fs::read_to_string(&log_path).unwrap_or_else(|e| {
+                                        format!("Error reading log file {:?}: {}", log_path, e)
+                                    });
+                                    let lines: Vec<String> = content.lines().map(|line| line.to_string()).collect();
+                                    s.inspected_host = Some(host_name);
+                                    s.inspected_logs = lines;
+                                    s.scroll_offset = usize::MAX;
+                                }
+                            }
+                        }
+                    }
+                }
                 terminal.draw(|f| {
                     let s = state.lock().unwrap();
                     draw_ui(f, &s);
@@ -573,35 +628,53 @@ pub async fn run_watch(target: &str, command: &str) -> Result<()> {
             }
             res = tokio::task::spawn_blocking(|| event::poll(Duration::from_millis(10))) => {
                 if let Ok(Ok(true)) = res {
-                    if let Event::Key(key) = event::read()? {
-                        if key.code == KeyCode::Char('c') && key.modifiers.contains(event::KeyModifiers::CONTROL) {
-                            let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
-                            if s.is_teardown {
-                                break;
-                            } else {
-                                s.is_teardown = true;
-                                s.first_ctrl_c = true;
-                                propagate_signals(channel_slots.clone());
-                            }
-                        } else if key.code == KeyCode::Esc || key.code == KeyCode::Char('q') {
-                            let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
-                            if !s.is_teardown {
-                                s.is_teardown = true;
-                                propagate_signals(channel_slots.clone());
-                            } else {
-                                break;
-                            }
-                        } else if key.code == KeyCode::Down || key.code == KeyCode::Char('j') {
-                            let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
-                            if s.selected_index + 1 < s.hosts.len() {
-                                s.selected_index += 1;
-                            }
-                        } else if key.code == KeyCode::Up || key.code == KeyCode::Char('k') {
-                            let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
-                            if s.selected_index > 0 {
-                                s.selected_index -= 1;
+                    match event::read()? {
+                        Event::Key(key) => {
+                            if key.code == KeyCode::Char('c') && key.modifiers.contains(event::KeyModifiers::CONTROL) {
+                                let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
+                                if s.is_teardown {
+                                    break;
+                                } else {
+                                    s.is_teardown = true;
+                                    s.first_ctrl_c = true;
+                                    propagate_signals(channel_slots.clone());
+                                }
+                            } else if key.code == KeyCode::Esc || key.code == KeyCode::Char('q') {
+                                let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
+                                if !s.is_teardown {
+                                    s.is_teardown = true;
+                                    propagate_signals(channel_slots.clone());
+                                } else {
+                                    break;
+                                }
+                            } else if key.code == KeyCode::Down || key.code == KeyCode::Char('j') {
+                                let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
+                                if s.selected_index + 1 < s.hosts.len() {
+                                    s.selected_index += 1;
+                                }
+                            } else if key.code == KeyCode::Up || key.code == KeyCode::Char('k') {
+                                let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
+                                if s.selected_index > 0 {
+                                    s.selected_index -= 1;
+                                }
+                            } else if key.code == KeyCode::PageUp {
+                                let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
+                                s.scroll_offset = s.scroll_offset.saturating_sub(10);
+                            } else if key.code == KeyCode::PageDown {
+                                let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
+                                s.scroll_offset = s.scroll_offset.saturating_add(10);
                             }
                         }
+                        Event::Mouse(mouse_event) => {
+                            if mouse_event.kind == MouseEventKind::ScrollUp {
+                                let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
+                                s.scroll_offset = s.scroll_offset.saturating_sub(2);
+                            } else if mouse_event.kind == MouseEventKind::ScrollDown {
+                                let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
+                                s.scroll_offset = s.scroll_offset.saturating_add(2);
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }
