@@ -223,6 +223,7 @@ pub fn extract_placeholders(s: &str) -> Vec<String> {
         .collect()
 }
 
+#[allow(dead_code)]
 pub fn replace_placeholders(template: &str, args: &HashMap<String, String>) -> Result<String> {
     let mut err = None;
     let result = PLACEHOLDER_REGEX.replace_all(template, |caps: &regex::Captures| {
@@ -296,6 +297,7 @@ fn match_host_pattern(
     false
 }
 
+#[allow(dead_code)]
 pub fn is_host_allowed_for_tool(
     host: &str,
     resolved_host: Option<&str>,
