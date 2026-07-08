@@ -632,7 +632,8 @@ pub async fn run_watch(target: &str, command: &str) -> Result<()> {
                         Event::Key(key) => {
                             if key.code == KeyCode::Char('c') && key.modifiers.contains(event::KeyModifiers::CONTROL) {
                                 let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
-                                if s.is_teardown {
+                                let is_complete = s.hosts.iter().all(|h| h.status != "Running");
+                                if is_complete || s.is_teardown {
                                     break;
                                 } else {
                                     s.is_teardown = true;
@@ -641,11 +642,12 @@ pub async fn run_watch(target: &str, command: &str) -> Result<()> {
                                 }
                             } else if key.code == KeyCode::Esc || key.code == KeyCode::Char('q') {
                                 let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
-                                if !s.is_teardown {
+                                let is_complete = s.hosts.iter().all(|h| h.status != "Running");
+                                if is_complete || s.is_teardown {
+                                    break;
+                                } else {
                                     s.is_teardown = true;
                                     propagate_signals(channel_slots.clone());
-                                } else {
-                                    break;
                                 }
                             } else if key.code == KeyCode::Down || key.code == KeyCode::Char('j') {
                                 let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
