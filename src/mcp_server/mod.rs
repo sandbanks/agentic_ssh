@@ -570,15 +570,11 @@ impl McpServer {
                     let cmd_to_run = cmd_to_run.clone();
                     let name = name.clone();
                     async move {
+                        let log_path = make_temp_log_path(&host);
                         let (stdout, stderr, exit_code) = pool
-                            .execute_command(
-                                &host,
-                                &cmd_to_run,
-                                true,
-                                5,
-                                std::env::temp_dir().join("agentic_ssh_temp.log"),
-                            )
+                            .execute_command(&host, &cmd_to_run, true, 5, log_path.clone())
                             .await?;
+                        let _ = std::fs::remove_file(&log_path);
                         if exit_code != 0 {
                             anyhow::bail!(
                                 "Error executing custom tool '{}' (exit code {}):\n{}",
@@ -922,6 +918,15 @@ pub fn parse_hosts(arguments: &serde_json::Value) -> Result<(Vec<String>, bool)>
             "Missing target host(s): specify either 'host' (string) or 'hosts' (array of strings)"
         );
     }
+}
+
+pub fn make_temp_log_path(host: &str) -> std::path::PathBuf {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let rand_hex = format!("{:04x}", now & 0xffff);
+    std::env::temp_dir().join(format!("agentic_ssh_{}_{}.log", host, rand_hex))
 }
 
 pub fn find_matched_line(buf: &mut Vec<u8>, re: &regex::Regex) -> Option<String> {

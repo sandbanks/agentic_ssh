@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use super::parsers::{parse_listening_ports, parse_system_stats};
-use super::{abbreviate_output, find_matched_line};
+use super::{abbreviate_output, find_matched_line, make_temp_log_path};
 use crate::ssh_pool::ConnectionPool;
 
 pub async fn run_get_system_stats(
@@ -11,15 +11,11 @@ pub async fn run_get_system_stats(
     host: &str,
 ) -> Result<serde_json::Value> {
     let cmd = "echo '=== LOAD ===' && (cat /proc/loadavg 2>/dev/null || uptime) && echo '=== MEM ===' && (cat /proc/meminfo 2>/dev/null || free -k 2>/dev/null) && echo '=== DISK ===' && df -kP /";
+    let log_path = make_temp_log_path(host);
     let (stdout, stderr, exit_code) = pool
-        .execute_command(
-            host,
-            cmd,
-            true,
-            5,
-            std::env::temp_dir().join("agentic_ssh_temp.log"),
-        )
+        .execute_command(host, cmd, true, 5, log_path.clone())
         .await?;
+    let _ = std::fs::remove_file(&log_path);
     if exit_code != 0 {
         anyhow::bail!(
             "Error executing stats command (exit code {}):\n{}",
@@ -38,15 +34,11 @@ pub async fn run_list_ports(
 ) -> Result<serde_json::Value> {
     // Read listening ports (ss -tulpn)
     let cmd = "ss -tulpn 2>/dev/null || netstat -tulpn 2>/dev/null || cat /proc/net/tcp";
+    let log_path = make_temp_log_path(host);
     let (stdout, stderr, exit_code) = pool
-        .execute_command(
-            host,
-            cmd,
-            true,
-            5,
-            std::env::temp_dir().join("agentic_ssh_temp.log"),
-        )
+        .execute_command(host, cmd, true, 5, log_path.clone())
         .await?;
+    let _ = std::fs::remove_file(&log_path);
     if exit_code != 0 {
         anyhow::bail!(
             "Error executing ports command (exit code {}):\n{}",
@@ -133,15 +125,17 @@ pub async fn run_search_processes(
     full_info: bool,
 ) -> Result<serde_json::Value> {
     // POSIX-standard process listing
+    let log_path = make_temp_log_path(host);
     let (stdout, stderr, exit_code) = pool
         .execute_command(
             host,
             "ps -eo pid,user,%cpu,%mem,args",
             true,
             5,
-            std::env::temp_dir().join("agentic_ssh_temp.log"),
+            log_path.clone(),
         )
         .await?;
+    let _ = std::fs::remove_file(&log_path);
     if exit_code != 0 {
         anyhow::bail!(
             "Error running ps command (exit code {}):\n{}",
@@ -206,15 +200,11 @@ pub async fn run_tail_log(
         lines,
         crate::ssh_pool::shell_escape(file_path)
     );
+    let log_path = make_temp_log_path(host);
     let (stdout, stderr, exit_code) = pool
-        .execute_command(
-            host,
-            &command,
-            true,
-            5,
-            std::env::temp_dir().join("agentic_ssh_temp.log"),
-        )
+        .execute_command(host, &command, true, 5, log_path.clone())
         .await?;
+    let _ = std::fs::remove_file(&log_path);
     if exit_code != 0 {
         anyhow::bail!("Error tailing file (exit code {}):\n{}", exit_code, stderr);
     }
@@ -235,15 +225,11 @@ pub async fn run_tail_container_logs(
         ts_flag,
         crate::ssh_pool::shell_escape(container)
     );
+    let log_path = make_temp_log_path(host);
     let (stdout, stderr, exit_code) = pool
-        .execute_command(
-            host,
-            &command,
-            true,
-            5,
-            std::env::temp_dir().join("agentic_ssh_temp.log"),
-        )
+        .execute_command(host, &command, true, 5, log_path.clone())
         .await?;
+    let _ = std::fs::remove_file(&log_path);
     let text = if exit_code != 0 { stderr } else { stdout };
     Ok(serde_json::json!(text))
 }
