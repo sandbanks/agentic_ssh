@@ -201,7 +201,11 @@ pub async fn run_tail_log(
     file_path: &str,
     lines: usize,
 ) -> Result<serde_json::Value> {
-    let command = format!("tail -n {} {}", lines, file_path);
+    let command = format!(
+        "tail -n {} {}",
+        lines,
+        crate::ssh_pool::shell_escape(file_path)
+    );
     let (stdout, stderr, exit_code) = pool
         .execute_command(
             host,
@@ -225,7 +229,12 @@ pub async fn run_tail_container_logs(
     timestamps: bool,
 ) -> Result<serde_json::Value> {
     let ts_flag = if timestamps { "--timestamps" } else { "" };
-    let command = format!("docker logs --tail {} {} {}", lines, ts_flag, container);
+    let command = format!(
+        "docker logs --tail {} {} {}",
+        lines,
+        ts_flag,
+        crate::ssh_pool::shell_escape(container)
+    );
     let (stdout, stderr, exit_code) = pool
         .execute_command(
             host,
@@ -249,9 +258,12 @@ pub async fn run_wait_for_log_pattern(
     timeout_secs: u64,
 ) -> Result<serde_json::Value> {
     let cmd = if let Some(path) = &file_path {
-        format!("tail -f -n 10 {}", path)
+        format!("tail -f -n 10 {}", crate::ssh_pool::shell_escape(path))
     } else {
-        format!("docker logs -f --tail 10 {}", container.as_ref().unwrap())
+        format!(
+            "docker logs -f --tail 10 {}",
+            crate::ssh_pool::shell_escape(container.as_ref().unwrap())
+        )
     };
 
     let handle = pool.get_connection(host).await?;
