@@ -5,6 +5,7 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{Terminal, backend::CrosstermBackend};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -35,6 +36,7 @@ pub struct WatchState {
     pub inspected_host: Option<String>,
     pub inspected_logs: Vec<String>,
     pub scroll_offset: usize,
+    pub last_viewport_height: AtomicUsize,
 }
 
 struct LineBuffer {
@@ -393,6 +395,9 @@ fn draw_ui(f: &mut ratatui::Frame, state: &WatchState) {
             let visible_lines = if is_complete {
                 let total_lines = state.inspected_logs.len();
                 let viewport_height = height.saturating_sub(2);
+                state
+                    .last_viewport_height
+                    .store(viewport_height, Ordering::Relaxed);
                 let max_offset = total_lines.saturating_sub(viewport_height);
                 let start = state.scroll_offset.min(max_offset);
                 let end = (start + viewport_height).min(total_lines);
@@ -455,7 +460,7 @@ fn draw_ui(f: &mut ratatui::Frame, state: &WatchState) {
         let (status_text, style) = if is_complete {
             if failed > 0 {
                 (
-                    " [Inspection Mode] Use Arrows to navigate/scroll logs. Press Esc or Ctrl+C to exit. ".to_string(),
+                    " [Inspection Mode] Arrows to scroll hosts, PgUp/PgDn/h/e to scroll logs. Press Esc to exit ".to_string(),
                     Style::default()
                         .bg(Color::Red)
                         .fg(Color::White)
@@ -463,7 +468,7 @@ fn draw_ui(f: &mut ratatui::Frame, state: &WatchState) {
                 )
             } else {
                 (
-                    " [Inspection Mode] Use Arrows to navigate/scroll logs. Press Esc or Ctrl+C to exit. ".to_string(),
+                    " [Inspection Mode] Arrows to scroll hosts, PgUp/PgDn/h/e to scroll logs. Press Esc to exit ".to_string(),
                     Style::default()
                         .bg(Color::Green)
                         .fg(Color::Black)
@@ -563,6 +568,7 @@ pub async fn run_watch(target: &str, command: &str) -> Result<()> {
         inspected_host: None,
         inspected_logs: Vec::new(),
         scroll_offset: 0,
+        last_viewport_height: AtomicUsize::new(0),
     }));
 
     let pool = Arc::new(crate::ssh_pool::ConnectionPool::new(Duration::from_secs(
@@ -661,19 +667,60 @@ pub async fn run_watch(target: &str, command: &str) -> Result<()> {
                                 }
                             } else if key.code == KeyCode::PageUp {
                                 let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
-                                s.scroll_offset = s.scroll_offset.saturating_sub(10);
+                                let viewport_height = s.last_viewport_height.load(Ordering::Relaxed);
+                                let total_lines = s.inspected_logs.len();
+                                let max_offset = total_lines.saturating_sub(viewport_height);
+                                let current = if s.scroll_offset == usize::MAX {
+                                    max_offset
+                                } else {
+                                    s.scroll_offset.min(max_offset)
+                                };
+                                s.scroll_offset = current.saturating_sub(10);
                             } else if key.code == KeyCode::PageDown {
                                 let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
-                                s.scroll_offset = s.scroll_offset.saturating_add(10);
+                                let viewport_height = s.last_viewport_height.load(Ordering::Relaxed);
+                                let total_lines = s.inspected_logs.len();
+                                let max_offset = total_lines.saturating_sub(viewport_height);
+                                let current = if s.scroll_offset == usize::MAX {
+                                    max_offset
+                                } else {
+                                    s.scroll_offset.min(max_offset)
+                                };
+                                s.scroll_offset = (current + 10).min(max_offset);
+                            } else if key.code == KeyCode::Home || key.code == KeyCode::Char('h') {
+                                let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
+                                s.scroll_offset = 0;
+                            } else if key.code == KeyCode::End || key.code == KeyCode::Char('e') {
+                                let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
+                                let viewport_height = s.last_viewport_height.load(Ordering::Relaxed);
+                                let total_lines = s.inspected_logs.len();
+                                let max_offset = total_lines.saturating_sub(viewport_height);
+                                s.scroll_offset = max_offset;
                             }
                         }
                         Event::Mouse(mouse_event) => {
                             if mouse_event.kind == MouseEventKind::ScrollUp {
                                 let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
-                                s.scroll_offset = s.scroll_offset.saturating_sub(2);
+                                let viewport_height = s.last_viewport_height.load(Ordering::Relaxed);
+                                let total_lines = s.inspected_logs.len();
+                                let max_offset = total_lines.saturating_sub(viewport_height);
+                                let current = if s.scroll_offset == usize::MAX {
+                                    max_offset
+                                } else {
+                                    s.scroll_offset.min(max_offset)
+                                };
+                                s.scroll_offset = current.saturating_sub(2);
                             } else if mouse_event.kind == MouseEventKind::ScrollDown {
                                 let mut s = state.lock().map_err(|_| anyhow::anyhow!("Mutex poisoned"))?;
-                                s.scroll_offset = s.scroll_offset.saturating_add(2);
+                                let viewport_height = s.last_viewport_height.load(Ordering::Relaxed);
+                                let total_lines = s.inspected_logs.len();
+                                let max_offset = total_lines.saturating_sub(viewport_height);
+                                let current = if s.scroll_offset == usize::MAX {
+                                    max_offset
+                                } else {
+                                    s.scroll_offset.min(max_offset)
+                                };
+                                s.scroll_offset = (current + 2).min(max_offset);
                             }
                         }
                         _ => {}

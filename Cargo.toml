@@ -1,8 +1,8 @@
 [package]
 name = "agentic_ssh"
-version = "0.3.7"
+version = "0.4.0"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.96"
 description = "A minimalist, secure engineering primitive for agentic SSH execution and detached background operations."
 keywords = ["mcp", "mcp-server", "ssh", "agent", "claude-code"]
 categories = ["development-tools", "command-line-utilities"]

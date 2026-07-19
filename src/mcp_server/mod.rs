@@ -192,6 +192,14 @@ impl McpServer {
                         }
                     }),
                     serde_json::json!({
+                        "name": "list_groups",
+                        "description": "Returns a map of configured host groups. The map keys represent group names, and the values are lists of member hosts. Useful to see what multi-host groups are available to query/run/watch.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {}
+                        }
+                    }),
+                    serde_json::json!({
                         "name": "get_system_stats",
                         "description": "Fetch CPU load average, RAM, and disk utilization metrics on a single host ('host') or multiple hosts concurrently ('hosts'). If using 'hosts', returns a JSON map mapping hostnames to their metrics. Prefer 'hosts' to query cluster status in parallel.",
                         "inputSchema": {
@@ -602,7 +610,11 @@ impl McpServer {
             }
             "list_hosts" => {
                 let hosts = list_ssh_hosts()?;
-                let text = serde_json::to_string_pretty(&hosts)?;
+                let filtered: Vec<String> = hosts
+                    .into_iter()
+                    .filter(|host| !crate::ssh_pool::is_host_ignored(host, None))
+                    .collect();
+                let text = serde_json::to_string_pretty(&filtered)?;
                 Ok(serde_json::json!({
                     "content": [{ "type": "text", "text": text }],
                     "isError": false
@@ -1165,5 +1177,21 @@ mod tests {
         let text_val = content[0].get("text").unwrap().as_str().unwrap();
         let parsed: serde_json::Value = serde_json::from_str(text_val).unwrap();
         assert!(parsed.is_object());
+    }
+
+    #[tokio::test]
+    async fn test_list_hosts_tool() {
+        let server = McpServer::new(Duration::from_secs(300));
+        let params = serde_json::json!({
+            "name": "list_hosts",
+            "arguments": {}
+        });
+        let result = server.handle_tools_call(Some(params)).await.unwrap();
+        assert!(!result.get("isError").unwrap().as_bool().unwrap());
+        let content = result.get("content").unwrap().as_array().unwrap();
+        assert_eq!(content.len(), 1);
+        let text_val = content[0].get("text").unwrap().as_str().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(text_val).unwrap();
+        assert!(parsed.is_array());
     }
 }

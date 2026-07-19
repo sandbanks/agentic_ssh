@@ -12,6 +12,17 @@
 
 # Global configuration flags (optional)
 # disable_local_config = false
+# allow_hosts = ["stan", "cartman", "kyle", "kenny", "*.local"]
+# ignore_hosts = ["*.prod.company.com"]
+
+# Host groups declaration
+[groups]
+nix = ["stan", "cartman", "kyle", "kenny"]
+ubuntu = ["stan", "cartman", "kyle"]
+oracle = ["kyle", "kenny"]
+compose = ["stan", "kyle", "kenny"]
+pi5 = ["stan", "cartman"]
+uncloud = ["cartman"]
 
 # Custom parameterized tools injected directly into the agent's workspace toolkit.
 [tools.git_pull]
@@ -26,7 +37,7 @@ validation = "strict" # Restricts inputs strictly to safe alphanumeric branch na
 [tools.check_service]
 description = "Checks the execution state of system services. Runs systemctl status for a service. Returns a systemd status summary."
 command = ["systemctl", "status", "{{service}}"]
-allow_hosts = ["stan", "delight", "*.local"]
+allow_hosts = ["stan", "cartman", "*.local"]
 allow_shell = false
 
 [tools.check_service.params.service]

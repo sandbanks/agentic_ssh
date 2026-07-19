@@ -3,12 +3,15 @@
 [![Crates.io Recent Downloads](https://img.shields.io/crates/dr/agentic_ssh?color=orange "Crates.io Recent Downloads (90 Days)")](https://crates.io/crates/agentic_ssh)
 [![Crates.io Total Downloads](https://img.shields.io/crates/d/agentic_ssh?color=orange "Crates.io Total Downloads")](https://crates.io/crates/agentic_ssh)
 [![Homebrew](https://img.shields.io/badge/brew-sandbanks%2Ftap-orange?logo=homebrew)](https://github.com/sandbanks/agentic_ssh#quick-start)
+[![agentic_ssh MCP server](https://glama.ai/mcp/servers/sandbanks/agentic_ssh/badges/score.svg)](https://glama.ai/mcp/servers/sandbanks/agentic_ssh)
 
 # agentic_ssh
 
 `agentic_ssh` is a high-performance Model Context Protocol (MCP) server written in Rust specifically engineered to provide **agent-hardened, token-efficient, and asynchronous SSH orchestrations** for AI agents. 
 
 Unlike generic terminal tools that block agent execution or flood context windows with verbose compiler output, `agentic_ssh` acts as a smart runtime layer. It automatically discovers hosts from your local SSH configurations, manages connection heartbeats, handles silent network dropouts, and supports detached background job scheduling with isolated session logging.
+
+![Agent finding information demo](demo/Kapture%20agy-agentic_ssh.gif)
 
 ---
 
@@ -84,6 +87,30 @@ To manually register `agentic_ssh` with an MCP client (such as Claude Desktop), 
 
 ---
 
+## Built-in MCP Tools
+
+`agentic_ssh` registers a rich set of built-in tooling commands to let the AI agent inspect, monitor, and query host configurations:
+
+* **`list_hosts`**: Returns the list of discovered and allowed remote SSH hosts.
+* **`list_groups`**: Returns a map of configured host groups and their member hosts.
+* **`run_command`**: Runs a shell command concurrently (supports synchronous inline collection or asynchronous background detaching).
+* **`get_system_stats`**: Retrieves core system stats (CPU, RAM, and disk utilization).
+* **`list_ports`**: Discovers active listening TCP/UDP ports, matching processes, and PIDs.
+* **`search_processes`**: Filters and evaluates active processes on the host.
+* **`tail_log`**: Fetches tail frames from target file paths.
+* **`tail_container_logs`**: Fetches tail frames from target Docker container logs.
+* **`wait_for_log_pattern`**: Blocks and streams logs until a matching regex pattern is detected.
+* **`check_service_status`**: Queries the status of systemd/systemctl service daemons.
+* **`check_docker_status`**: Inspects status of the Docker engine and active container metrics.
+* **`list_upgradable`**: Identifies remote packages that have newer versions available.
+* **`git_pull`**: Fetches and merges updates from a target Git repository configuration.
+* **`find_large_files`**: Finds files exceeding specified size limits on target volumes.
+* **`grep_syslog`**: Queries remote system log streams for custom search patterns.
+* **`list_cron_jobs`**: Displays configured cron schedule tables for users and systems.
+* **`list_network_connections`**: Lists active TCP/UDP socket network connections.
+
+---
+
 ## Master Domain Tooling Schema
 
 ### 1. `run_command`
@@ -105,8 +132,8 @@ Executes a shell command on one or multiple configured hosts. Supports both sync
 ```json
 {
   "status": "started",
-  "log_path": "/Users/richard/.agentic_ssh/sessions/job_20260627_1649_delight_5f58.log",
-  "message": "🚀 Command started in background. To watch live progress, run:\n  tail -f /Users/richard/.agentic_ssh/sessions/job_20260627_1649_delight_5f58.log"
+  "log_path": "/Users/richard/.agentic_ssh/sessions/job_20260627_1649_cartman_5f58.log",
+  "message": "🚀 Command started in background. To watch live progress, run:\n  tail -f /Users/richard/.agentic_ssh/sessions/job_20260627_1649_cartman_5f58.log"
 }
 
 ```
@@ -121,7 +148,7 @@ Executes a shell command on one or multiple configured hosts. Supports both sync
 Lists all explicit SSH host aliases configured in your `~/.ssh/config` file matching security criteria.
 
 * **Arguments**: None
-* **Returns**: A JSON array of secure string aliases (e.g., `["stan", "delight", "edge-router"]`).
+* **Returns**: A JSON array of secure string aliases (e.g., `["stan", "kyle", "cartman", "edge-router"]`).
 
 ### 3. Diagnostic & Inspection Tools
 
@@ -157,7 +184,7 @@ pool_status_path = "~/.agentic_ssh_pool_status.json"
 
 # Strict isolation security boundaries
 ignore_hosts = ["*.prod.company.com", "secure-gateway"]
-allow_hosts = ["stan", "delight", "*.local"]
+allow_hosts = ["stan", "kyle", "*.local"]
 
 # Inject custom parameterized statements directly into the agent toolkit
 [tools.git_pull]
@@ -171,6 +198,51 @@ validation = "strict"
 
 ---
 
+## Declaring Hosts and Groups
+
+* **Hosts**: `agentic_ssh` automatically discovers individual host aliases configured in your standard `~/.ssh/config` file (respecting any `allow_hosts`/`ignore_hosts` filters).
+* **Groups**: You can define custom multi-host groups to run tasks or watch commands on multiple targets simultaneously. Groups are configured under the `[groups]` table in either your global configuration file (`~/.config/agentic_ssh/config.toml`) or a local project configuration (`.agentic_ssh.toml`):
+
+```toml
+[groups]
+nix = ["stan", "cartman", "kyle"]
+nixos = ["kenny"]
+ubuntu = ["stan", "cartman", "kyle"]
+oracle = ["kyle", "kenny"]
+pi5 = ["stan", "cartman"]
+compose = ["stan", "kyle", "kenny"]
+uncloud = ["cartman"]
+web-fleet = ["web-server-1", "web-server-2", "web-server-3"]
+database-fleet = ["db-master", "db-replica-1"]
+```
+
+---
+
+## Real-Time Command Watcher (TUI)
+
+You can watch commands executing concurrently across one or multiple hosts in real-time. This is perfect for monitoring multi-node deployments, streaming server logs, or watching build compilation:
+
+```bash
+# Watch a command on a single host
+agentic_ssh watch web-server-1 "tail -f /var/log/nginx/access.log"
+
+# Watch concurrently on multiple hosts (comma-separated list)
+agentic_ssh watch "web-server-1,web-server-2" "free -h"
+
+# Watch a command on an entire group defined in your config.toml
+agentic_ssh watch web-fleet "docker logs -f my-app"
+```
+
+![Real-Time Command Watcher demo](demo/watch_demo.gif)
+
+### Dynamic Post-Execution Inspection Mode
+When all node executions conclude (either by completing, failing, or canceling), the TUI layout smoothly pivots from the Multi-Tail grid view into an interactive **Split-Pane Inspection Mode**:
+* **Host Sidebar (Left Pane)**: A navigable menu showing the final status (✅ success, 🔴 failure) of all target hosts. Use **Up/Down** or **J/K** to switch between hosts.
+* **Log Viewport (Right Pane)**: Shows the complete log buffer for the selected host read from local telemetry logs. Scroll through the log buffer using **PageUp/PageDown** or the mouse scroll wheel.
+* **Exit**: Press **Esc**, **Q**, or **Ctrl+C** to immediately clean up and exit back to your shell.
+
+---
+
 ## TUI Monitoring Dashboard
 
 Inspect connection pool tracking states, idle intervals, and active time-to-live metrics directly using the built-in terminal monitoring component:
@@ -179,6 +251,8 @@ Inspect connection pool tracking states, idle intervals, and active time-to-live
 agentic_ssh tui
 
 ```
+
+![TUI Monitoring Dashboard demo](demo/Kapture%20vibe-agentic_ssh.gif)
 
 ## Acknowledgments
 
