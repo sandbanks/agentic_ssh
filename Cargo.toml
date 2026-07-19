@@ -10,6 +10,11 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/sandbanks/agentic_ssh"
 homepage = "https://github.com/sandbanks/agentic_ssh"
 documentation = "https://docs.rs/agentic_ssh"
+exclude = [
+    "demo/*",
+    ".beads/*",
+    "rust-guidelines.txt",
+]
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
