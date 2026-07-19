@@ -2,5 +2,11 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
+  ],
+  "packageRules": [
+    {
+      "packageNames": ["sha2"],
+      "allowedVersions": "<0.11.0"
+    }
   ]
 }
