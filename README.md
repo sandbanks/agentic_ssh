@@ -11,7 +11,7 @@
 
 Unlike generic terminal tools that block agent execution or flood context windows with verbose compiler output, `agentic_ssh` acts as a smart runtime layer. It automatically discovers hosts from your local SSH configurations, manages connection heartbeats, handles silent network dropouts, and supports detached background job scheduling with isolated session logging.
 
-![Agent finding information demo](demo/Kapture%20agy-agentic_ssh.gif)
+![Agent finding information demo](https://assets.sandbanks.tech/agentic_ssh/Kapture%20agy-agentic_ssh.gif)
 
 ---
 
@@ -233,7 +233,7 @@ agentic_ssh watch "web-server-1,web-server-2" "free -h"
 agentic_ssh watch web-fleet "docker logs -f my-app"
 ```
 
-![Real-Time Command Watcher demo](demo/watch_demo.gif)
+![Real-Time Command Watcher demo](https://assets.sandbanks.tech/agentic_ssh/watch_demo.gif)
 
 ### Dynamic Post-Execution Inspection Mode
 When all node executions conclude (either by completing, failing, or canceling), the TUI layout smoothly pivots from the Multi-Tail grid view into an interactive **Split-Pane Inspection Mode**:
@@ -252,7 +252,7 @@ agentic_ssh tui
 
 ```
 
-![TUI Monitoring Dashboard demo](demo/Kapture%20vibe-agentic_ssh.gif)
+![TUI Monitoring Dashboard demo](https://assets.sandbanks.tech/agentic_ssh/Kapture%20vibe-agentic_ssh.gif)
 
 ## Acknowledgments
 
