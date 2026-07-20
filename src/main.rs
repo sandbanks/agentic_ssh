@@ -122,6 +122,14 @@ enum Commands {
         #[arg(long, value_enum)]
         agent: Option<AgentOption>,
     },
+    /// Call an MCP tool directly via CLI and print its JSON response to stdout
+    Json {
+        /// Name of the tool to execute
+        tool: String,
+
+        /// Optional JSON arguments payload or comma-separated host list
+        arguments: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -336,6 +344,40 @@ async fn main() -> anyhow::Result<()> {
         Some(Commands::Doctor { agent }) => {
             let agent_str = agent.map(|a| a.to_str());
             doctor::run_doctor(agent_str).await;
+        }
+        Some(Commands::Json { tool, arguments }) => {
+            let args_val = if let Some(ref args_str) = arguments {
+                let trimmed = args_str.trim();
+                if trimmed.starts_with('{') {
+                    serde_json::from_str(trimmed)
+                        .map_err(|e| anyhow::anyhow!("Invalid JSON arguments: {}", e))?
+                } else {
+                    let hosts: Vec<String> = trimmed
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                    serde_json::json!({ "hosts": hosts })
+                }
+            } else {
+                serde_json::json!({})
+            };
+
+            let server = mcp_server::McpServer::new(Duration::from_secs(300));
+            let params = serde_json::json!({
+                "name": tool,
+                "arguments": args_val
+            });
+            match server.handle_tools_call(Some(params)).await {
+                Ok(res) => {
+                    let text = serde_json::to_string_pretty(&res)?;
+                    println!("{}", text);
+                }
+                Err(e) => {
+                    eprintln!("Error executing tool: {}", e);
+                    std::process::exit(1);
+                }
+            }
         }
         Some(Commands::Serve) | None => {
             // We maintain a pool of open SSH connections, closing them after 5 minutes (300 seconds) of inactivity.

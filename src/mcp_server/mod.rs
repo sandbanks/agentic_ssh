@@ -488,7 +488,7 @@ impl McpServer {
         }
     }
 
-    async fn handle_tools_call(
+    pub async fn handle_tools_call(
         &self,
         params: Option<serde_json::Value>,
     ) -> Result<serde_json::Value> {

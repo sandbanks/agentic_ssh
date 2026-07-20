@@ -111,6 +111,30 @@ To manually register `agentic_ssh` with an MCP client (such as Claude Desktop), 
 
 ---
 
+## Direct CLI Tool Execution (JSON Output)
+
+For debugging, custom scripting, or simple multi-host queries, developers can run the MCP tools directly from their terminal using the `json` subcommand. The output is returned as standard, clean JSON:
+
+```bash
+# General Syntax
+agentic_ssh json <tool_name> [arguments]
+
+# Examples:
+# 1. Discover host groups configuration
+agentic_ssh json list_groups
+
+# 2. Get system stats for specific hosts (comma-separated positional shortcut)
+agentic_ssh json get_system_stats aruba,stan,delight
+
+# 3. Query listening ports with full JSON arguments payload
+agentic_ssh json list_ports '{"hosts": ["aruba", "stan"]}'
+
+# 4. Run an arbitrary remote command concurrently
+agentic_ssh json run_command '{"hosts": ["aruba", "stan"], "command": "free -h"}'
+```
+
+---
+
 ## Master Domain Tooling Schema
 
 ### 1. `run_command`
