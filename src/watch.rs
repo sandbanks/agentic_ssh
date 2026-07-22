@@ -730,12 +730,66 @@ pub async fn run_watch(target: &str, command: &str) -> Result<()> {
         }
     }
 
+    drop(_guard);
+
+    let hosts_info: Vec<(String, std::path::PathBuf)> = {
+        let s = state.lock().unwrap_or_else(|e| e.into_inner());
+        s.hosts
+            .iter()
+            .map(|h| (h.name.clone(), h.log_path.clone()))
+            .collect()
+    };
+
+    if let Some(summary) = format_log_files_summary(&hosts_info) {
+        println!("{}", summary.trim_end());
+    }
+
     Ok(())
+}
+
+pub fn format_log_files_summary(hosts_info: &[(String, std::path::PathBuf)]) -> Option<String> {
+    let log_files: Vec<&(String, std::path::PathBuf)> = hosts_info
+        .iter()
+        .filter(|(_, p)| !p.as_os_str().is_empty())
+        .collect();
+
+    if log_files.is_empty() {
+        None
+    } else {
+        let mut out = String::from("Watch log files created:\n");
+        for (host, path) in log_files {
+            out.push_str(&format!("  - {}: {}\n", host, path.display()));
+        }
+        Some(out)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_format_log_files_summary() {
+        let empty = Vec::new();
+        assert_eq!(format_log_files_summary(&empty), None);
+
+        let hosts = vec![
+            (
+                "host1".to_string(),
+                std::path::PathBuf::from("/logs/host1.log"),
+            ),
+            (
+                "host2".to_string(),
+                std::path::PathBuf::from("/logs/host2.log"),
+            ),
+            ("host3".to_string(), std::path::PathBuf::new()),
+        ];
+        let summary = format_log_files_summary(&hosts).unwrap();
+        assert!(summary.contains("Watch log files created:"));
+        assert!(summary.contains("  - host1: /logs/host1.log"));
+        assert!(summary.contains("  - host2: /logs/host2.log"));
+        assert!(!summary.contains("host3"));
+    }
 
     #[test]
     fn test_line_buffer() {
