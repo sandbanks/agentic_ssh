@@ -176,6 +176,8 @@ pub struct Config {
     pub pool_status_path: Option<String>,
     #[serde(default)]
     pub disable_local_config: bool,
+    #[serde(default, alias = "no_update_check")]
+    pub disable_update_check: bool,
     #[serde(default)]
     pub tools: HashMap<String, PreparedTool>,
     #[serde(default)]
@@ -329,6 +331,7 @@ pub fn load_config_from_str(content: &str) -> Result<Config> {
 pub struct CliOverride {
     pub config_path: Option<PathBuf>,
     pub no_global: bool,
+    pub no_update_check: bool,
 }
 
 pub static CLI_OVERRIDE: OnceLock<CliOverride> = OnceLock::new();

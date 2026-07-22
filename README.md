@@ -206,6 +206,9 @@ Customize matching rule engines or specify layout configurations globally using 
 # Custom path to look for pooling state tables
 pool_status_path = "~/.agentic_ssh_pool_status.json"
 
+# Disable automatic background update checks (for offline or quiet environments)
+disable_update_check = true # or: no_update_check = true
+
 # Strict isolation security boundaries
 ignore_hosts = ["*.prod.company.com", "secure-gateway"]
 allow_hosts = ["stan", "kyle", "*.local"]
@@ -219,6 +222,24 @@ allow_hosts = ["stan"]
 validation = "strict"
 
 ```
+
+### Disabling Automatic Update Checks
+
+By default, `agentic_ssh` checks GitHub Releases in the background for newer versions (cached every 24 hours) and prints a notice on `stderr` if an upgrade is available.
+
+You can disable version checking entirely via CLI flag or configuration setting:
+
+* **Via CLI Flag**:
+  ```bash
+  agentic_ssh --no-update-check <subcommand>
+  ```
+
+* **Via Configuration File (`~/.config/agentic_ssh/config.toml` or `.agentic_ssh.toml`)**:
+  ```toml
+  disable_update_check = true
+  # or alias:
+  no_update_check = true
+  ```
 
 ---
 

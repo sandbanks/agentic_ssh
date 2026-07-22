@@ -11,6 +11,7 @@ mod mcp_server;
 mod security;
 mod ssh_config;
 mod ssh_pool;
+mod update_check;
 mod watch;
 
 use clap::{Parser, Subcommand, ValueEnum};
@@ -72,6 +73,10 @@ struct Cli {
     /// Ignore the global configuration baseline entirely
     #[arg(long)]
     no_global: bool,
+
+    /// Disable checking for newer versions of agentic_ssh
+    #[arg(long)]
+    no_update_check: bool,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -140,10 +145,14 @@ async fn main() -> anyhow::Result<()> {
     let _ = ssh_pool::CLI_OVERRIDE.set(ssh_pool::CliOverride {
         config_path: cli.config.clone(),
         no_global: cli.no_global,
+        no_update_check: cli.no_update_check,
     });
 
     // Run configuration loading and validation check immediately upon startup
     let _ = ssh_pool::load_config();
+
+    // Check if a newer version of agentic_ssh is available
+    update_check::notify_if_update_available().await;
 
     // GUARDRAIL 1: Protect explicit config override paths and trust commands from agent injection
     if cli.config.is_some() || cli.no_global || matches!(cli.command, Some(Commands::Trust { .. }))

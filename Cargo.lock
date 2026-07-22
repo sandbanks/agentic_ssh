@@ -47,7 +47,7 @@ dependencies = [
 
 [[package]]
 name = "agentic_ssh"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "anyhow",
  "chrono",
@@ -58,6 +58,7 @@ dependencies = [
  "mimalloc",
  "ratatui",
  "regex",
+ "reqwest",
  "russh",
  "serde",
  "serde_json",
@@ -3765,6 +3766,8 @@ dependencies = [
  "rustls",
  "rustls-pki-types",
  "rustls-platform-verifier",
+ "serde",
+ "serde_json",
  "sync_wrapper",
  "tokio",
  "tokio-rustls",
