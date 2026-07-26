@@ -660,7 +660,7 @@ impl McpServer {
                 let quiet = arguments
                     .get("quiet")
                     .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
+                    .unwrap_or(true);
                 let progress_interval_secs = arguments
                     .get("progress_interval_secs")
                     .and_then(|v| v.as_u64())

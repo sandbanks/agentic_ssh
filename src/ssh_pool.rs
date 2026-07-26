@@ -1096,7 +1096,7 @@ impl ConnectionPool {
                             total_kb,
                             elapsed.as_secs()
                         );
-                        eprint!("{}", msg);
+                        pool_eprintln!("{}", msg);
                         if let Some(ref mut f) = log_file {
                             let _ = f.write_all(msg.as_bytes()).await;
                             let _ = f.flush().await;
