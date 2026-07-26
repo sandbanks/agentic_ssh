@@ -1,3 +1,4 @@
+use ansi_to_tui::IntoText;
 use anyhow::Result;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
@@ -409,7 +410,8 @@ fn draw_ui(f: &mut ratatui::Frame, state: &WatchState) {
             };
 
             let text = visible_lines.join("\n");
-            let paragraph = Paragraph::new(text).block(
+            let parsed_text = parse_ansi_into_text(&text);
+            let paragraph = Paragraph::new(parsed_text).block(
                 Block::default()
                     .borders(Borders::ALL)
                     .title(format!(" Logs: {} ({}) ", host.name, host.status)),
@@ -435,6 +437,7 @@ fn draw_ui(f: &mut ratatui::Frame, state: &WatchState) {
             let start = log_len.saturating_sub(height.saturating_sub(2));
             let visible_lines = &host.log_lines[start..];
             let text = visible_lines.join("\n");
+            let parsed_text = parse_ansi_into_text(&text);
 
             let border_color = match host.status.as_str() {
                 "Success" => Color::Green,
@@ -442,7 +445,7 @@ fn draw_ui(f: &mut ratatui::Frame, state: &WatchState) {
                 _ => Color::Yellow,
             };
 
-            let paragraph = Paragraph::new(text).block(
+            let paragraph = Paragraph::new(parsed_text).block(
                 Block::default()
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(border_color))
@@ -747,6 +750,12 @@ pub async fn run_watch(target: &str, command: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn parse_ansi_into_text(text: &str) -> ratatui::text::Text<'static> {
+    text.as_bytes()
+        .into_text()
+        .unwrap_or_else(|_| ratatui::text::Text::raw(text.to_string()))
+}
+
 pub fn format_log_files_summary(hosts_info: &[(String, std::path::PathBuf)]) -> Option<String> {
     let log_files: Vec<&(String, std::path::PathBuf)> = hosts_info
         .iter()
@@ -767,6 +776,16 @@ pub fn format_log_files_summary(hosts_info: &[(String, std::path::PathBuf)]) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_ansi_into_text() {
+        let text_with_ansi = "\x1b[1;34m🏥 NIX FLEET HEALTH CHECK\x1b[0m";
+        let parsed = parse_ansi_into_text(text_with_ansi);
+        assert!(!parsed.lines.is_empty());
+        let line = &parsed.lines[0];
+        assert!(!line.spans.is_empty());
+        assert_eq!(line.spans[0].content, "🏥 NIX FLEET HEALTH CHECK");
+    }
 
     #[test]
     fn test_format_log_files_summary() {
