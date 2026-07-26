@@ -379,8 +379,13 @@ async fn main() -> anyhow::Result<()> {
             });
             match server.handle_tools_call(Some(params)).await {
                 Ok(res) => {
-                    let text = serde_json::to_string_pretty(&res)?;
-                    println!("{}", text);
+                    let (output, is_error) = extract_mcp_result_output(&res);
+                    if is_error {
+                        eprintln!("{}", output);
+                        std::process::exit(1);
+                    } else {
+                        println!("{}", output);
+                    }
                 }
                 Err(e) => {
                     eprintln!("Error executing tool: {}", e);
@@ -544,4 +549,101 @@ fn auto_install_if_needed() -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+pub fn extract_mcp_result_output(res: &serde_json::Value) -> (String, bool) {
+    let is_error = res
+        .get("isError")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if is_error {
+        if let Some(content_array) = res.get("content").and_then(|v| v.as_array()) {
+            let mut err_lines = Vec::new();
+            for item in content_array {
+                if let Some(text) = item.get("text").and_then(|v| v.as_str()) {
+                    err_lines.push(text.to_string());
+                }
+            }
+            if !err_lines.is_empty() {
+                return (err_lines.join("\n"), true);
+            }
+        }
+        return (serde_json::to_string_pretty(res).unwrap_or_default(), true);
+    }
+
+    if let Some(content_array) = res.get("content").and_then(|v| v.as_array()) {
+        let mut out_parts = Vec::new();
+        for item in content_array {
+            if let Some(text) = item.get("text").and_then(|v| v.as_str()) {
+                if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(text) {
+                    out_parts.push(
+                        serde_json::to_string_pretty(&json_val)
+                            .unwrap_or_else(|_| text.to_string()),
+                    );
+                } else {
+                    out_parts.push(text.to_string());
+                }
+            }
+        }
+        if !out_parts.is_empty() {
+            return (out_parts.join("\n"), false);
+        }
+    }
+
+    (serde_json::to_string_pretty(res).unwrap_or_default(), false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_mcp_result_output_json_payload() {
+        let raw = serde_json::json!({
+            "content": [
+                {
+                    "type": "text",
+                    "text": "{\n  \"ubuntu\": [\"aruba\", \"stan\"]\n}"
+                }
+            ],
+            "isError": false
+        });
+        let (output, is_error) = extract_mcp_result_output(&raw);
+        assert!(!is_error);
+        assert!(output.contains("\"ubuntu\": ["));
+        assert!(output.contains("\"aruba\""));
+        assert!(!output.contains("\"content\":"));
+    }
+
+    #[test]
+    fn test_extract_mcp_result_output_plain_text() {
+        let raw = serde_json::json!({
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Hello world stdout"
+                }
+            ],
+            "isError": false
+        });
+        let (output, is_error) = extract_mcp_result_output(&raw);
+        assert!(!is_error);
+        assert_eq!(output, "Hello world stdout");
+    }
+
+    #[test]
+    fn test_extract_mcp_result_output_error() {
+        let raw = serde_json::json!({
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Error: host not found"
+                }
+            ],
+            "isError": true
+        });
+        let (output, is_error) = extract_mcp_result_output(&raw);
+        assert!(is_error);
+        assert_eq!(output, "Error: host not found");
+    }
 }
