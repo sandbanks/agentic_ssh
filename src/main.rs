@@ -355,6 +355,7 @@ async fn main() -> anyhow::Result<()> {
             doctor::run_doctor(agent_str).await;
         }
         Some(Commands::Json { tool, arguments }) => {
+            ssh_pool::SILENT_CONNECTION_LOGS.store(true, std::sync::atomic::Ordering::Relaxed);
             let args_val = if let Some(ref args_str) = arguments {
                 let trimmed = args_str.trim();
                 if trimmed.starts_with('{') {
