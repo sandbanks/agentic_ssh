@@ -92,7 +92,7 @@ To manually register `agentic_ssh` with an MCP client (such as Claude Desktop), 
 `agentic_ssh` registers a rich set of built-in tooling commands to let the AI agent inspect, monitor, and query host configurations:
 
 * **`list_hosts`**: Returns the list of discovered and allowed remote SSH hosts.
-* **`list_groups`**: Returns a map of configured host groups and their member hosts.
+* **`list_groups`**: Returns a map of configured remote SSH host groups and their member SSH hosts.
 * **`run_command`**: Runs a shell command concurrently (supports synchronous inline collection or asynchronous background detaching).
 * **`get_system_stats`**: Retrieves core system stats (CPU, RAM, and disk utilization).
 * **`list_ports`**: Discovers active listening TCP/UDP ports, matching processes, and PIDs.

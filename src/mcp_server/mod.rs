@@ -193,7 +193,7 @@ impl McpServer {
                     }),
                     serde_json::json!({
                         "name": "list_groups",
-                        "description": "Returns a map of configured host groups. The map keys represent group names, and the values are lists of member hosts. Useful to see what multi-host groups are available to query/run/watch.",
+                        "description": "Returns a map of configured remote SSH host groups. The map keys represent group names, and the values are lists of target SSH hosts. Useful to see what multi-host SSH groups are available to query/run/watch.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {}
