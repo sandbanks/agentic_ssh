@@ -18,6 +18,7 @@ pub async fn run_doctor(agent_filter: Option<&str>) {
     );
 
     check_binary(&mut dc);
+    check_diskspace(&mut dc);
     check_ssh_environment(&mut dc);
     check_daemon_status(&mut dc);
 
@@ -56,6 +57,40 @@ fn check_binary(dc: &mut DoctorCounters) {
         dc.fail("Could not determine binary path");
     }
     dc.pass(&format!("Version: {}", env!("CARGO_PKG_VERSION")));
+}
+
+fn check_diskspace(dc: &mut DoctorCounters) {
+    eprintln!("\n\x1b[1mSession Logs & Storage\x1b[0m");
+    let sessions_dir = crate::clean::get_sessions_dir();
+    let stats = crate::clean::analyze_session_logs_in_dir(&sessions_dir);
+
+    if stats.total_count == 0 {
+        dc.pass("Session logs directory is clean (0 log files found)");
+    } else {
+        dc.pass(&format!(
+            "Found {} session log file(s) occupying {}",
+            stats.total_count,
+            crate::clean::format_bytes(stats.total_bytes)
+        ));
+        dc.info(&format!(
+            "Reclaimable (> 2 days): {} file(s) ({})",
+            stats.older_than_2_days.count,
+            crate::clean::format_bytes(stats.older_than_2_days.total_bytes)
+        ));
+        dc.info(&format!(
+            "Reclaimable (> 3 days): {} file(s) ({})",
+            stats.older_than_3_days.count,
+            crate::clean::format_bytes(stats.older_than_3_days.total_bytes)
+        ));
+        dc.info(&format!(
+            "Reclaimable (> 7 days): {} file(s) ({})",
+            stats.older_than_7_days.count,
+            crate::clean::format_bytes(stats.older_than_7_days.total_bytes)
+        ));
+        if stats.older_than_3_days.count > 0 {
+            dc.info("Run `agentic_ssh clean` to reclaim disk space.");
+        }
+    }
 }
 
 fn check_ssh_environment(dc: &mut DoctorCounters) {

@@ -178,6 +178,8 @@ pub struct Config {
     pub disable_local_config: bool,
     #[serde(default, alias = "no_update_check")]
     pub disable_update_check: bool,
+    #[serde(default, alias = "log_retention_days")]
+    pub clean_days: Option<u32>,
     #[serde(default)]
     pub tools: HashMap<String, PreparedTool>,
     #[serde(default)]

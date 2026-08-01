@@ -5,6 +5,7 @@ use std::{path::PathBuf, time::Duration};
 static GLOBAL: MiMalloc = MiMalloc;
 
 mod agents;
+mod clean;
 mod doctor;
 mod errors;
 mod mcp_server;
@@ -134,6 +135,16 @@ enum Commands {
 
         /// Optional JSON arguments payload or comma-separated host list
         arguments: Option<String>,
+    },
+    /// Clean up session log files (~/.agentic_ssh/sessions)
+    Clean {
+        /// Delete all existing session logs
+        #[arg(short = 'a', long)]
+        all: bool,
+
+        /// Delete existing session logs older than N days
+        #[arg(short = 'n', long = "numdays", value_name = "DAYS")]
+        numdays: Option<u32>,
     },
 }
 
@@ -390,6 +401,34 @@ async fn main() -> anyhow::Result<()> {
                 }
                 Err(e) => {
                     eprintln!("Error executing tool: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        Some(Commands::Clean { all, numdays }) => {
+            let config = ssh_pool::load_config();
+            let default_days = config.clean_days.unwrap_or(3);
+            let sessions_dir = clean::get_sessions_dir();
+            match clean::clean_session_logs_in_dir(&sessions_dir, all, numdays, default_days) {
+                Ok(result) => {
+                    if result.deleted_count > 0 {
+                        println!(
+                            "🧹 Cleaned {} session log file(s) (reclaimed {}).",
+                            result.deleted_count,
+                            clean::format_bytes(result.reclaimed_bytes)
+                        );
+                    } else if all {
+                        println!("🧹 No session log files found to clean.");
+                    } else {
+                        let days = result.target_days.unwrap_or(default_days);
+                        println!(
+                            "🧹 No session log files older than {} day(s) found (0 files deleted).",
+                            days
+                        );
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error cleaning session logs: {}", e);
                     std::process::exit(1);
                 }
             }

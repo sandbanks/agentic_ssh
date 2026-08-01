@@ -209,6 +209,9 @@ pool_status_path = "~/.agentic_ssh_pool_status.json"
 # Disable automatic background update checks (for offline or quiet environments)
 disable_update_check = true # or: no_update_check = true
 
+# Default retention age for log cleanup (defaults to 3 days)
+clean_days = 3 # or: log_retention_days = 3
+
 # Strict isolation security boundaries
 ignore_hosts = ["*.prod.company.com", "secure-gateway"]
 allow_hosts = ["stan", "kyle", "*.local"]
@@ -240,6 +243,21 @@ You can disable version checking entirely via CLI flag or configuration setting:
   # or alias:
   no_update_check = true
   ```
+
+### Cleaning Up Session Logs
+
+Session telemetry log files stored in `~/.agentic_ssh/sessions` can be cleaned up using the `clean` subcommand. You can also view log storage space and reclaimable breakdown by running `agentic_ssh doctor`.
+
+```bash
+# Delete logs older than 3 days (or default configured in clean_days / log_retention_days)
+agentic_ssh clean
+
+# Delete logs older than N days (e.g. 7 days)
+agentic_ssh clean --numdays 7   # or: -n 7
+
+# Delete ALL session log files
+agentic_ssh clean --all         # or: -a
+```
 
 ---
 
