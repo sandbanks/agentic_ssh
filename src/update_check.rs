@@ -135,6 +135,50 @@ pub async fn notify_if_update_available() {
     }
 }
 
+/// Always checks for the latest version against GitHub (or cache fallback)
+/// and prints version info formatted as:
+/// `agentic_ssh X.Y.Z (latest)` or `agentic_ssh X.Y.Z (upgrade available: A.B.C)`
+pub async fn check_and_print_version_status() {
+    let current_version = env!("CARGO_PKG_VERSION");
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let config = crate::ssh_pool::load_config();
+    let is_disabled = config.disable_update_check
+        || crate::ssh_pool::CLI_OVERRIDE
+            .get()
+            .map(|c| c.no_update_check)
+            .unwrap_or(false);
+
+    let latest_option = if !is_disabled {
+        if let Some(latest_tag) = fetch_latest_release_from_github().await {
+            let clean_latest = latest_tag.trim_start_matches('v').to_string();
+            let new_cache = VersionCache {
+                last_check_timestamp: now,
+                latest_version: clean_latest.clone(),
+            };
+            write_cache(&new_cache);
+            Some(clean_latest)
+        } else {
+            read_cache().map(|c| c.latest_version)
+        }
+    } else {
+        read_cache().map(|c| c.latest_version)
+    };
+
+    if let Some(latest) = latest_option.filter(|l| is_newer_version(current_version, l)) {
+        println!(
+            "agentic_ssh {} (upgrade available: {})",
+            current_version, latest
+        );
+        return;
+    }
+
+    println!("agentic_ssh {} (latest)", current_version);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

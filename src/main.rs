@@ -64,9 +64,12 @@ impl AgentOption {
 
 #[derive(Parser)]
 #[command(name = "agentic_ssh")]
-#[command(version)]
+#[command(disable_version_flag = true)]
 #[command(about = "agentic_ssh - SSH connection pooling & MCP server for AI agents", long_about = None)]
 struct Cli {
+    /// Print version information
+    #[arg(short = 'V', long, help = "Print version information")]
+    version: bool,
     /// Explicit override path to a configuration file
     #[arg(long, value_name = "FILE")]
     config: Option<PathBuf>,
@@ -158,6 +161,11 @@ async fn main() -> anyhow::Result<()> {
         no_global: cli.no_global,
         no_update_check: cli.no_update_check,
     });
+
+    if cli.version {
+        update_check::check_and_print_version_status().await;
+        return Ok(());
+    }
 
     // Run configuration loading and validation check immediately upon startup
     let _ = ssh_pool::load_config();
