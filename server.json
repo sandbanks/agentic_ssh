@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.sandbanks/agentic_ssh",
+  "title": "Agentic SSH",
+  "description": "High-performance (Rust), token-efficient, and asynchronous SSH orchestrations for AI agents.",
+  "repository": {
+    "url": "https://github.com/sandbanks/agentic_ssh",
+    "source": "github"
+  },
+  "version": "0.4.6",
+  "packages": [
+    {
+      "registryType": "cargo",
+      "identifier": "agentic_ssh",
+      "version": "0.4.6",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
