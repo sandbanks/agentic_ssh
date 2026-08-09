@@ -1,9 +1,12 @@
 [![Release](https://github.com/sandbanks/agentic_ssh/actions/workflows/release.yml/badge.svg)](https://github.com/sandbanks/agentic_ssh/actions/workflows/release.yml)
+[![MCP Toplist](https://mcptoplist.com/badge/glama%2Fsandbanks%2Fagentic_ssh.svg)](https://mcptoplist.com/server/glama%2Fsandbanks%2Fagentic_ssh)
+[![agentic_ssh MCP server](https://glama.ai/mcp/servers/sandbanks/agentic_ssh/badges/score.svg)](https://glama.ai/mcp/servers/sandbanks/agentic_ssh)
+
+
 [![Crates.io](https://img.shields.io/crates/v/agentic_ssh.svg)](https://crates.io/crates/agentic_ssh)
 [![Crates.io Recent Downloads](https://img.shields.io/crates/dr/agentic_ssh?color=orange "Crates.io Recent Downloads (90 Days)")](https://crates.io/crates/agentic_ssh)
 [![Crates.io Total Downloads](https://img.shields.io/crates/d/agentic_ssh?color=orange "Crates.io Total Downloads")](https://crates.io/crates/agentic_ssh)
 [![Homebrew](https://img.shields.io/badge/brew-sandbanks%2Ftap-orange?logo=homebrew)](https://github.com/sandbanks/agentic_ssh#quick-start)
-[![agentic_ssh MCP server](https://glama.ai/mcp/servers/sandbanks/agentic_ssh/badges/score.svg)](https://glama.ai/mcp/servers/sandbanks/agentic_ssh)
 
 # agentic_ssh
 
