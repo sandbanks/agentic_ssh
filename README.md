@@ -331,3 +331,5 @@ agentic_ssh tui
 MIT / Apache 2.0
 
 ```
+
+mcp-name: io.github.sandbanks/agentic_ssh
