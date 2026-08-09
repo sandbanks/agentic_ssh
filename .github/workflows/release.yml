@@ -198,3 +198,36 @@ jobs:
         run: cargo publish
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  publish-to-mcp-registry:
+    name: Publish to MCP Registry
+    if: github.event_name == 'release' && !github.event.release.prerelease
+    needs: publish-crate
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # Grants OIDC token generation
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Wait for Crates.io index
+        run: sleep 30
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+          sudo mv mcp-publisher /usr/local/bin/
+
+      - name: Authenticate via OIDC
+        run: mcp-publisher login github-oidc
+
+      - name: Stamp version into server.json
+        run: |
+          VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          jq --arg v "$VERSION" '.version = $v | .packages[0].version = $v' server.json > server.tmp.json && mv server.tmp.json server.json
+
+      - name: Publish metadata
+        run: mcp-publisher publish
