@@ -1,5 +1,5 @@
 [![Release](https://github.com/sandbanks/agentic_ssh/actions/workflows/release.yml/badge.svg)](https://github.com/sandbanks/agentic_ssh/actions/workflows/release.yml)
-[![MCP Toplist](https://mcptoplist.com/badge/glama%2Fsandbanks%2Fagentic_ssh.svg)](https://mcptoplist.com/server/glama%2Fsandbanks%2Fagentic_ssh)
+[![MCP Toplist](https://mcptoplist.com/badge/io.github.sandbanks%2Fagentic_ssh.svg)](https://mcptoplist.com/server/io.github.sandbanks%2Fagentic_ssh)
 [![agentic_ssh MCP server](https://glama.ai/mcp/servers/sandbanks/agentic_ssh/badges/score.svg)](https://glama.ai/mcp/servers/sandbanks/agentic_ssh)
 
 
