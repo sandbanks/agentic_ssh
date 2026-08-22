@@ -18,7 +18,7 @@ exclude = [
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
-russh = { version = "0.62" }
+russh = { version = "0.63" }
 ssh2-config-rs = "0.7"
 anyhow = "1"
 mimalloc = "0.1"
