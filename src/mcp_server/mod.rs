@@ -277,6 +277,10 @@ impl McpServer {
                                 "max_lines": {
                                     "type": "integer",
                                     "description": "Max lines to return if abbreviate is true (default: 100)"
+                                },
+                                "timeout_secs": {
+                                    "type": "integer",
+                                    "description": "Maximum execution time in seconds for the command (default: 60)"
                                 }
                             },
                             "required": ["command"]
@@ -670,6 +674,11 @@ impl McpServer {
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
 
+                let timeout_secs = arguments
+                    .get("timeout_secs")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(60);
+
                 let pool = self.pool.clone();
                 let command = command.to_string();
                 let run_cmd = move |host: String| {
@@ -690,7 +699,7 @@ impl McpServer {
                     }
                 };
 
-                run_tool_on_hosts(hosts, is_multi, 15, run_cmd).await
+                run_tool_on_hosts(hosts, is_multi, timeout_secs, run_cmd).await
             }
             "search_processes" => {
                 let (hosts, is_multi) = parse_hosts(&arguments)?;
@@ -971,8 +980,10 @@ where
         }))
     } else {
         let host = &hosts[0];
-        match f(host.to_string()).await {
-            Ok(val) => {
+        let timeout_dur = Duration::from_secs(timeout_secs);
+        let res = tokio::time::timeout(timeout_dur, f(host.to_string())).await;
+        match res {
+            Ok(Ok(val)) => {
                 let text = if let serde_json::Value::String(s) = val {
                     s
                 } else {
@@ -983,8 +994,12 @@ where
                     "isError": false
                 }))
             }
-            Err(e) => Ok(serde_json::json!({
+            Ok(Err(e)) => Ok(serde_json::json!({
                 "content": [{ "type": "text", "text": format!("Error: {:#}", e) }],
+                "isError": true
+            })),
+            Err(_) => Ok(serde_json::json!({
+                "content": [{ "type": "text", "text": format!("Error: Execution on host '{}' timed out after {} seconds", host, timeout_secs) }],
                 "isError": true
             })),
         }

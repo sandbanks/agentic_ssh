@@ -181,6 +181,8 @@ pub struct Config {
     #[serde(default, alias = "log_retention_days")]
     pub clean_days: Option<u32>,
     #[serde(default)]
+    pub connect_timeout_secs: Option<u64>,
+    #[serde(default)]
     pub tools: HashMap<String, PreparedTool>,
     #[serde(default)]
     pub ignore_hosts: Vec<String>,
@@ -849,158 +851,190 @@ impl ConnectionPool {
     }
 
     async fn connect_new(&self, host: &str) -> Result<Handle<ClientHandler>> {
-        let ssh_config = load_ssh_config().unwrap_or_default();
-        let params = ssh_config.query(host);
+        let global_cfg = load_config();
+        let timeout_secs = global_cfg
+            .connect_timeout_secs
+            .or_else(|| crate::ssh_config::find_connect_timeout(host))
+            .unwrap_or(10);
+        let timeout_dur = Duration::from_secs(timeout_secs);
 
-        let real_host = params.host_name.as_deref().unwrap_or(host);
-        let port = params.port.unwrap_or(22);
+        let connect_fut = async {
+            let ssh_config = load_ssh_config().unwrap_or_default();
+            let params = ssh_config.query(host);
 
-        let current_user = std::env::var("USER")
-            .or_else(|_| std::env::var("USERNAME"))
-            .unwrap_or_else(|_| "root".to_string());
-        let user = params.user.as_deref().unwrap_or(&current_user);
+            let real_host = params.host_name.as_deref().unwrap_or(host);
+            let port = params.port.unwrap_or(22);
 
-        // Build list of keys to try
-        let mut keys_to_try = Vec::new();
-        if let Some(ref identity_files) = params.identity_file {
-            for id_file in identity_files {
-                keys_to_try.push(expand_path(id_file));
+            let current_user = std::env::var("USER")
+                .or_else(|_| std::env::var("USERNAME"))
+                .unwrap_or_else(|_| "root".to_string());
+            let user = params.user.as_deref().unwrap_or(&current_user);
+
+            // Build list of keys to try
+            let mut keys_to_try = Vec::new();
+            if let Some(ref identity_files) = params.identity_file {
+                for id_file in identity_files {
+                    keys_to_try.push(expand_path(id_file));
+                }
             }
-        }
 
-        // Always append standard default keys as fallbacks (mimicking OpenSSH)
-        if let Some(home_dir) = home::home_dir() {
-            let ssh_dir = home_dir.join(".ssh");
-            keys_to_try.push(ssh_dir.join("id_rsa"));
-            keys_to_try.push(ssh_dir.join("id_ed25519"));
-            keys_to_try.push(ssh_dir.join("id_ecdsa"));
-            keys_to_try.push(ssh_dir.join("id_dsa"));
-        }
+            // Always append standard default keys as fallbacks (mimicking OpenSSH)
+            if let Some(home_dir) = home::home_dir() {
+                let ssh_dir = home_dir.join(".ssh");
+                keys_to_try.push(ssh_dir.join("id_rsa"));
+                keys_to_try.push(ssh_dir.join("id_ed25519"));
+                keys_to_try.push(ssh_dir.join("id_ecdsa"));
+                keys_to_try.push(ssh_dir.join("id_dsa"));
+            }
 
-        // Deduplicate key files while keeping the original order
-        let mut seen = std::collections::HashSet::new();
-        keys_to_try.retain(|x| seen.insert(x.clone()));
+            // Deduplicate key files while keeping the original order
+            let mut seen = std::collections::HashSet::new();
+            keys_to_try.retain(|x| seen.insert(x.clone()));
 
-        pool_eprintln!(
-            "Connecting to {} ({}:{}) as user {}...",
-            host,
-            real_host,
-            port,
-            user
-        );
-
-        // Resolve host to socket address
-        let addr_str = format!("{}:{}", real_host, port);
-        let addrs = tokio::net::lookup_host(&addr_str)
-            .await
-            .with_context(|| format!("Failed to resolve address: {}", addr_str))?;
-        let socket_addr = addrs
-            .into_iter()
-            .next()
-            .ok_or_else(|| anyhow!("Could not resolve host: {}", real_host))?;
-
-        let config = Arc::new(russh::client::Config {
-            keepalive_interval: Some(Duration::from_secs(30)),
-            keepalive_max: 3,
-            ..Default::default()
-        });
-        let mut handle = russh::client::connect(config, socket_addr, ClientHandler)
-            .await
-            .context("Failed to connect via TCP/SSH")?;
-
-        let mut authenticated = false;
-
-        // Try SSH Agent first if available
-        if let Ok(socket_path) = std::env::var("SSH_AUTH_SOCK") {
             pool_eprintln!(
-                "SSH_AUTH_SOCK found at {:?}. Attempting agent authentication...",
-                socket_path
+                "Connecting to {} ({}:{}) as user {} (timeout: {}s)...",
+                host,
+                real_host,
+                port,
+                user,
+                timeout_secs
             );
-            match tokio::net::UnixStream::connect(&socket_path).await {
-                Ok(stream) => {
-                    let mut agent_client = russh::keys::agent::client::AgentClient::connect(stream);
-                    match agent_client.request_identities().await {
-                        Ok(identities) => {
-                            pool_eprintln!("Found {} keys in SSH agent", identities.len());
-                            for identity in identities {
-                                pool_eprintln!("Trying agent key...");
-                                match handle
-                                    .authenticate_publickey_with(
-                                        user,
-                                        identity.public_key().into_owned(),
-                                        None,
-                                        &mut agent_client,
-                                    )
-                                    .await
-                                {
-                                    Ok(success) => {
-                                        if success.success() {
-                                            pool_eprintln!(
-                                                "Authentication succeeded for {} using SSH agent key",
-                                                host
-                                            );
-                                            authenticated = true;
-                                            break;
-                                        } else {
-                                            pool_eprintln!("Server rejected agent key");
+
+            // Resolve host to socket address
+            let addr_str = format!("{}:{}", real_host, port);
+            let addrs = tokio::net::lookup_host(&addr_str)
+                .await
+                .with_context(|| format!("Failed to resolve address: {}", addr_str))?;
+            let socket_addr = addrs
+                .into_iter()
+                .next()
+                .ok_or_else(|| anyhow!("Could not resolve host: {}", real_host))?;
+
+            let config = Arc::new(russh::client::Config {
+                keepalive_interval: Some(Duration::from_secs(30)),
+                keepalive_max: 3,
+                ..Default::default()
+            });
+            let mut handle = russh::client::connect(config, socket_addr, ClientHandler)
+                .await
+                .context("Failed to connect via TCP/SSH")?;
+
+            let mut authenticated = false;
+
+            // Try SSH Agent first if available
+            if let Ok(socket_path) = std::env::var("SSH_AUTH_SOCK") {
+                pool_eprintln!(
+                    "SSH_AUTH_SOCK found at {:?}. Attempting agent authentication...",
+                    socket_path
+                );
+                match tokio::net::UnixStream::connect(&socket_path).await {
+                    Ok(stream) => {
+                        let mut agent_client =
+                            russh::keys::agent::client::AgentClient::connect(stream);
+                        match agent_client.request_identities().await {
+                            Ok(identities) => {
+                                pool_eprintln!("Found {} keys in SSH agent", identities.len());
+                                for identity in identities {
+                                    pool_eprintln!("Trying agent key...");
+                                    match handle
+                                        .authenticate_publickey_with(
+                                            user,
+                                            identity.public_key().into_owned(),
+                                            None,
+                                            &mut agent_client,
+                                        )
+                                        .await
+                                    {
+                                        Ok(success) => {
+                                            if success.success() {
+                                                pool_eprintln!(
+                                                    "Authentication succeeded for {} using SSH agent key",
+                                                    host
+                                                );
+                                                authenticated = true;
+                                                break;
+                                            } else {
+                                                pool_eprintln!("Server rejected agent key");
+                                            }
                                         }
-                                    }
-                                    Err(e) => {
-                                        pool_eprintln!("Error with agent authentication: {:?}", e);
+                                        Err(e) => {
+                                            pool_eprintln!(
+                                                "Error with agent authentication: {:?}",
+                                                e
+                                            );
+                                        }
                                     }
                                 }
                             }
-                        }
-                        Err(e) => {
-                            pool_eprintln!("Failed to request identities from SSH agent: {:?}", e);
-                        }
-                    }
-                }
-                Err(e) => {
-                    pool_eprintln!("Failed to connect to SSH agent socket: {:?}", e);
-                }
-            }
-        }
-
-        if !authenticated {
-            for key_path in &keys_to_try {
-                if !key_path.exists() {
-                    continue;
-                }
-                pool_eprintln!("Attempting authentication with key: {:?}", key_path);
-                if let Ok(key) = russh::keys::load_secret_key(key_path, None) {
-                    let key_with_alg = russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key), None);
-                    match handle.authenticate_publickey(user, key_with_alg).await {
-                        Ok(success) => {
-                            if success.success() {
+                            Err(e) => {
                                 pool_eprintln!(
-                                    "Authentication succeeded for {} using {:?}",
-                                    host,
-                                    key_path
+                                    "Failed to request identities from SSH agent: {:?}",
+                                    e
                                 );
-                                authenticated = true;
-                                break;
-                            } else {
-                                pool_eprintln!("Server rejected key {:?}", key_path);
                             }
                         }
-                        Err(e) => {
-                            pool_eprintln!("Error authenticating with key {:?}: {:?}", key_path, e);
+                    }
+                    Err(e) => {
+                        pool_eprintln!("Failed to connect to SSH agent socket: {:?}", e);
+                    }
+                }
+            }
+
+            if !authenticated {
+                for key_path in &keys_to_try {
+                    if !key_path.exists() {
+                        continue;
+                    }
+                    pool_eprintln!("Attempting authentication with key: {:?}", key_path);
+                    if let Ok(key) = russh::keys::load_secret_key(key_path, None) {
+                        let key_with_alg =
+                            russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key), None);
+                        match handle.authenticate_publickey(user, key_with_alg).await {
+                            Ok(success) => {
+                                if success.success() {
+                                    pool_eprintln!(
+                                        "Authentication succeeded for {} using {:?}",
+                                        host,
+                                        key_path
+                                    );
+                                    authenticated = true;
+                                    break;
+                                } else {
+                                    pool_eprintln!("Server rejected key {:?}", key_path);
+                                }
+                            }
+                            Err(e) => {
+                                pool_eprintln!(
+                                    "Error authenticating with key {:?}: {:?}",
+                                    key_path,
+                                    e
+                                );
+                            }
                         }
                     }
                 }
             }
-        }
 
-        if !authenticated {
-            return Err(anyhow!(
-                "Failed to authenticate connection to {} as user {}. No working keys found.",
-                host,
-                user
-            ));
-        }
+            if !authenticated {
+                return Err(anyhow!(
+                    "Failed to authenticate connection to {} as user {}. No working keys found.",
+                    host,
+                    user
+                ));
+            }
 
-        Ok(handle)
+            Ok(handle)
+        };
+
+        tokio::time::timeout(timeout_dur, connect_fut)
+            .await
+            .map_err(|_| {
+                anyhow!(
+                    "Connection to host '{}' timed out after {} seconds",
+                    host,
+                    timeout_secs
+                )
+            })?
     }
 
     /// Runs a command on a host, updating the last used time.
@@ -1590,5 +1624,14 @@ mod tests {
             vec!["host1".to_string()],
         );
         assert!(config_ok.validate().is_ok());
+    }
+
+    #[test]
+    fn test_config_connect_timeout() {
+        let content = r#"
+            connect_timeout_secs = 5
+        "#;
+        let cfg = load_config_from_str(content).unwrap();
+        assert_eq!(cfg.connect_timeout_secs, Some(5));
     }
 }

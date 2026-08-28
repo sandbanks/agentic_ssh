@@ -90,6 +90,101 @@ fn find_hosts_in_file(
     Ok(hosts)
 }
 
+/// Recursively parses SSH config files starting from a base path to find `ConnectTimeout` for a host.
+fn find_connect_timeout_in_file(
+    path: &Path,
+    ssh_dir: &Path,
+    target_host: &str,
+    visited: &mut Vec<PathBuf>,
+) -> Result<Option<u64>> {
+    let path = expand_path(path);
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
+    if visited.contains(&canonical) {
+        return Ok(None);
+    }
+    visited.push(canonical);
+
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let file =
+        File::open(&path).with_context(|| format!("Failed to open SSH config file: {:?}", path))?;
+    let reader = BufReader::new(file);
+
+    let mut current_host_matches = false;
+    let target_host_lower = target_host.to_lowercase();
+
+    for line_res in reader.lines() {
+        let line = match line_res {
+            Ok(l) => l,
+            Err(_) => continue,
+        };
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+
+        let parts: Vec<&str> = trimmed
+            .splitn(2, |c: char| c.is_whitespace() || c == '=')
+            .collect();
+        if parts.len() < 2 {
+            continue;
+        }
+        let key = parts[0].to_lowercase();
+        let val = parts[1].trim().trim_matches('"');
+
+        if key == "host" {
+            current_host_matches = false;
+            for pattern in val.split_whitespace() {
+                let pat_lower = pattern.to_lowercase();
+                if let Ok(glob_pat) = glob::Pattern::new(&pat_lower)
+                    && glob_pat.matches(&target_host_lower)
+                {
+                    current_host_matches = true;
+                    break;
+                }
+            }
+        } else if key == "connecttimeout" && current_host_matches {
+            if let Ok(secs) = val.parse::<u64>() {
+                return Ok(Some(secs));
+            }
+        } else if key == "include" {
+            let include_path = Path::new(val);
+            let target_path = if include_path.is_absolute() {
+                include_path.to_path_buf()
+            } else if val.starts_with("~/") {
+                expand_path(include_path)
+            } else {
+                ssh_dir.join(include_path)
+            };
+
+            if let Some(entries) = target_path.to_str().and_then(|s| glob(s).ok()) {
+                for entry in entries.flatten() {
+                    if let Ok(Some(secs)) =
+                        find_connect_timeout_in_file(&entry, ssh_dir, target_host, visited)
+                    {
+                        return Ok(Some(secs));
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+/// Finds the configured `ConnectTimeout` in seconds for the given target host from SSH config files.
+pub fn find_connect_timeout(target_host: &str) -> Option<u64> {
+    let home = home::home_dir()?;
+    let ssh_dir = home.join(".ssh");
+    let main_config = ssh_dir.join("config");
+    let mut visited = Vec::new();
+    find_connect_timeout_in_file(&main_config, &ssh_dir, target_host, &mut visited)
+        .ok()
+        .flatten()
+}
+
 /// Lists all explicit hosts found in the user's SSH config files.
 pub fn list_ssh_hosts() -> Result<Vec<String>> {
     let home = home::home_dir().context("Could not determine home directory")?;
@@ -141,7 +236,7 @@ mod tests {
 
     #[test]
     fn test_find_hosts_in_file() -> Result<()> {
-        let temp_dir = std::env::temp_dir().join("agentic_ssh_test");
+        let temp_dir = std::env::temp_dir().join("agentic_ssh_test_hosts");
         let _ = fs::remove_dir_all(&temp_dir); // Ensure clean slate
         fs::create_dir_all(&temp_dir)?;
 
@@ -170,6 +265,48 @@ mod tests {
         // Clean up
         let _ = fs::remove_file(main_config_path);
         let _ = fs::remove_file(include_config_path);
+        let _ = fs::remove_dir(temp_dir);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_find_connect_timeout() -> Result<()> {
+        let temp_dir = std::env::temp_dir().join("agentic_ssh_test_timeout");
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&temp_dir)?;
+
+        let main_config_path = temp_dir.join("config");
+        let mut main_file = File::create(&main_config_path)?;
+        writeln!(
+            main_file,
+            "Host fast-box\n  HostName 10.0.0.1\n  ConnectTimeout 3\n\nHost *.prod.example.com\n  ConnectTimeout 7\n\nHost *\n  ConnectTimeout 15"
+        )?;
+
+        let mut visited = Vec::new();
+        let t1 =
+            find_connect_timeout_in_file(&main_config_path, &temp_dir, "fast-box", &mut visited)?;
+        assert_eq!(t1, Some(3));
+
+        let mut visited = Vec::new();
+        let t2 = find_connect_timeout_in_file(
+            &main_config_path,
+            &temp_dir,
+            "app.prod.example.com",
+            &mut visited,
+        )?;
+        assert_eq!(t2, Some(7));
+
+        let mut visited = Vec::new();
+        let t3 = find_connect_timeout_in_file(
+            &main_config_path,
+            &temp_dir,
+            "unknown-node",
+            &mut visited,
+        )?;
+        assert_eq!(t3, Some(15));
+
+        let _ = fs::remove_file(main_config_path);
         let _ = fs::remove_dir(temp_dir);
 
         Ok(())

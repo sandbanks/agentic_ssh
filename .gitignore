@@ -11,5 +11,7 @@
 
 # bv (beads viewer) local config and caches
 .bv/
+.beads/*.db*
+.beads/.*
 Dockerfile
 demo/*.mp4
