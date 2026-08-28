@@ -1,0 +1,58 @@
+{
+  description = "A minimalist, secure engineering primitive for agentic SSH execution and detached background operations";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
+  };
+
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
+      let
+        pkgs = nixpkgs.legacyPackages.${system};
+
+        agentic_ssh-pkg = pkgs.rustPlatform.buildRustPackage {
+          pname = "agentic_ssh";
+          version = "0.4.9";
+          src = ./.;
+
+          cargoHash = "sha256-sz8OdWZ8Hp6Wz4fXTwq/sSf+kuO6qpbQdISJViPheY8=";
+
+          buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
+            pkgs.apple-sdk_15
+            pkgs.libiconv
+          ];
+
+          nativeBuildInputs = [ pkgs.pkg-config ];
+
+          # Unit tests for CLI/integration requiring network/SSH are skipped in Nix sandbox
+          doCheck = false;
+        };
+      in
+      {
+        packages.default = agentic_ssh-pkg;
+        packages.agentic_ssh = agentic_ssh-pkg;
+
+        apps.default = {
+          type = "app";
+          program = "${agentic_ssh-pkg}/bin/agentic_ssh";
+        };
+
+        devShells.default = pkgs.mkShell {
+          inputsFrom = [ agentic_ssh-pkg ];
+          packages = with pkgs; [
+            rustfmt
+            clippy
+            cargo
+            rustc
+          ];
+        };
+      }
+    );
+}
