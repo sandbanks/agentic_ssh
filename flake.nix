@@ -1,6 +1,15 @@
 {
   description = "A minimalist, secure engineering primitive for agentic SSH execution and detached background operations";
 
+  nixConfig = {
+    extra-substituters = [
+      "https://sandbanks.cachix.org"
+    ];
+    extra-trusted-public-keys = [
+      "sandbanks.cachix.org-1:4OivlISgqyRf860wy5yXPcvVYzxrR1aYf/C4gWR5z4c="
+    ];
+  };
+
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
