@@ -29,6 +29,9 @@ brew install agentic_ssh
 # Install Homebrew (one step)
 brew install sandbanks/tap/agentic_ssh
 
+# Run instantly with Nix (zero-compile)
+nix run github:sandbanks/agentic_ssh -- doctor
+
 # Install (recommended: pre-compiled binary via cargo-binstall)
 cargo binstall agentic_ssh
 
@@ -38,6 +41,8 @@ cargo install agentic_ssh
 # Auto-configure and register with your active agent environments
 agentic_ssh install
 
+# Discover all available MCP tools and their schemas
+agentic_ssh tools
 ```
 
 ---

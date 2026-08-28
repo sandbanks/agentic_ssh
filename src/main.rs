@@ -149,6 +149,13 @@ enum Commands {
         #[arg(short = 'n', long = "numdays", value_name = "DAYS")]
         numdays: Option<u32>,
     },
+    /// List all available built-in and dynamically configured MCP tools
+    #[command(alias = "list-tools")]
+    Tools {
+        /// Output tools in raw JSON format
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[tokio::main]
@@ -441,11 +448,75 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
+        Some(Commands::Tools { json }) => {
+            print_tools(json)?;
+        }
         Some(Commands::Serve) | None => {
             // We maintain a pool of open SSH connections, closing them after 5 minutes (300 seconds) of inactivity.
             let server = mcp_server::McpServer::new(Duration::from_secs(300));
             server.run().await?;
         }
+    }
+    Ok(())
+}
+
+fn print_tools(json: bool) -> anyhow::Result<()> {
+    let tools = mcp_server::list_available_tools();
+    if json {
+        println!("{}", serde_json::to_string_pretty(&tools)?);
+        return Ok(());
+    }
+
+    println!("Available agentic_ssh MCP Tools ({} total):\n", tools.len());
+    for tool in tools {
+        let name = tool
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        let description = tool
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        println!("\x1B[1;36m• {}\x1B[0m", name);
+        if !description.is_empty() {
+            println!("  {}", description);
+        }
+
+        if let Some(schema) = tool.get("inputSchema")
+            && let Some(props) = schema.get("properties").and_then(|v| v.as_object())
+            && !props.is_empty()
+        {
+            let required_list: Vec<&str> = schema
+                .get("required")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
+                .unwrap_or_default();
+
+            println!("  \x1B[1mParameters:\x1B[0m");
+            for (param_name, param_obj) in props {
+                let param_type = param_obj
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("string");
+                let is_req = required_list.contains(&param_name.as_str());
+                let req_str = if is_req {
+                    "\x1B[33mrequired\x1B[0m"
+                } else {
+                    "\x1B[90moptional\x1B[0m"
+                };
+                let param_desc = param_obj
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+
+                println!(
+                    "    - \x1B[32m{}\x1B[0m ({}, {}): {}",
+                    param_name, param_type, req_str, param_desc
+                );
+            }
+        }
+        println!();
     }
     Ok(())
 }
@@ -693,5 +764,24 @@ mod tests {
         let (output, is_error) = extract_mcp_result_output(&raw);
         assert!(is_error);
         assert_eq!(output, "Error: host not found");
+    }
+
+    #[test]
+    fn test_list_available_tools_contains_builtins() {
+        let tools = mcp_server::list_available_tools();
+        assert!(tools.len() >= 8);
+        let names: Vec<&str> = tools
+            .iter()
+            .filter_map(|t| t.get("name").and_then(|v| v.as_str()))
+            .collect();
+        assert!(names.contains(&"list_hosts"));
+        assert!(names.contains(&"list_groups"));
+        assert!(names.contains(&"get_system_stats"));
+        assert!(names.contains(&"list_ports"));
+        assert!(names.contains(&"run_command"));
+        assert!(names.contains(&"search_processes"));
+        assert!(names.contains(&"tail_log"));
+        assert!(names.contains(&"tail_container_logs"));
+        assert!(names.contains(&"wait_for_log_pattern"));
     }
 }

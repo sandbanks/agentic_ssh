@@ -181,275 +181,7 @@ impl McpServer {
                 error: None,
             },
             "tools/list" => {
-                let config = crate::ssh_pool::load_config();
-                let mut tools_arr = vec![
-                    serde_json::json!({
-                        "name": "list_hosts",
-                        "description": "Returns the list of configured remote SSH hosts. Useful to see what remote machines are available to target.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {}
-                        }
-                    }),
-                    serde_json::json!({
-                        "name": "list_groups",
-                        "description": "Returns a map of configured remote SSH host groups. The map keys represent group names, and the values are lists of target SSH hosts. Useful to see what multi-host SSH groups are available to query/run/watch.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {}
-                        }
-                    }),
-                    serde_json::json!({
-                        "name": "get_system_stats",
-                        "description": "Fetch CPU load average, RAM, and disk utilization metrics on a single host ('host') or multiple hosts concurrently ('hosts'). If using 'hosts', returns a JSON map mapping hostnames to their metrics. Prefer 'hosts' to query cluster status in parallel.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "host": {
-                                    "type": "string",
-                                    "description": "The target hostname or IP address"
-                                },
-                                "hosts": {
-                                    "type": "array",
-                                    "items": { "type": "string" },
-                                    "description": "A list of hostname targets to query concurrently"
-                                }
-                            }
-                        }
-                    }),
-                    serde_json::json!({
-                        "name": "list_ports",
-                        "description": "Lists active listening TCP/UDP ports, matching processes, and PIDs on a single host ('host') or multiple hosts concurrently ('hosts'). If using 'hosts', returns a JSON map mapping hostnames to their active port list. Optionally filter by 'port'. Prefer 'hosts' to scan service availability across multiple machines simultaneously.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "host": {
-                                    "type": "string",
-                                    "description": "The target hostname or IP address"
-                                },
-                                "hosts": {
-                                    "type": "array",
-                                    "items": { "type": "string" },
-                                    "description": "A list of hostname targets to query concurrently"
-                                },
-                                "port": {
-                                    "type": "integer",
-                                    "description": "Optional port number to filter by"
-                                }
-                            }
-                        }
-                    }),
-                    serde_json::json!({
-                        "name": "run_command",
-                        "description": "Executes a shell command on a single host ('host') or multiple hosts concurrently ('hosts'). If using 'hosts', returns a JSON map mapping hostnames to their stdout, stderr, and exit codes. Features optional 'background' execution (starting the command and returning a local log file path immediately for async tracking), 'quiet' execution (suppressing progress logs), and output abbreviation controls. Prefer 'hosts' to execute commands across cluster nodes simultaneously.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "host": {
-                                    "type": "string",
-                                    "description": "The target hostname or IP address"
-                                },
-                                "hosts": {
-                                    "type": "array",
-                                    "items": { "type": "string" },
-                                    "description": "A list of hostname targets to query concurrently"
-                                },
-                                "command": {
-                                    "type": "string",
-                                    "description": "The shell command to run on target"
-                                },
-                                "quiet": {
-                                    "type": "boolean",
-                                    "description": "If true, suppresses terminal progress logging in background files (default: false)"
-                                },
-                                "progress_interval_secs": {
-                                    "type": "integer",
-                                    "description": "Number of seconds between progress reporting updates (default: 5)"
-                                },
-                                "background": {
-                                    "type": "boolean",
-                                    "description": "If true, runs command in background and returns log path immediately (default: false)"
-                                },
-                                "abbreviate": {
-                                    "type": "boolean",
-                                    "description": "If true, limits long stdout output (default: true)"
-                                },
-                                "max_lines": {
-                                    "type": "integer",
-                                    "description": "Max lines to return if abbreviate is true (default: 100)"
-                                },
-                                "timeout_secs": {
-                                    "type": "integer",
-                                    "description": "Maximum execution time in seconds for the command (default: 60)"
-                                }
-                            },
-                            "required": ["command"]
-                        }
-                    }),
-                    serde_json::json!({
-                        "name": "search_processes",
-                        "description": "Searches running processes on a single host ('host') or multiple hosts concurrently ('hosts') matching a regex 'pattern'. If using 'hosts', returns a JSON map mapping hostnames to their matched process list. Optionally returns full user/CPU/mem stats if 'full_info' is true. Prefer 'hosts' to find running services across multiple cluster nodes simultaneously.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "host": {
-                                    "type": "string",
-                                    "description": "The target hostname or IP address"
-                                },
-                                "hosts": {
-                                    "type": "array",
-                                    "items": { "type": "string" },
-                                    "description": "A list of hostname targets to query concurrently"
-                                },
-                                "pattern": {
-                                    "type": "string",
-                                    "description": "Regex pattern to match against command lines (case-insensitive)"
-                                },
-                                "full_info": {
-                                    "type": "boolean",
-                                    "description": "If true, includes user, %cpu, %mem in output (default: false)"
-                                }
-                            },
-                            "required": ["pattern"]
-                        }
-                    }),
-                    serde_json::json!({
-                        "name": "tail_log",
-                        "description": "Fetch the last N lines of a remote log file on a single host ('host') or multiple hosts concurrently ('hosts'). If using 'hosts', returns a JSON map mapping hostnames to their log output. Prefer 'hosts' to query logs across multiple machines simultaneously.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "host": {
-                                    "type": "string",
-                                    "description": "The target hostname or IP address"
-                                },
-                                "hosts": {
-                                    "type": "array",
-                                    "items": { "type": "string" },
-                                    "description": "A list of hostname targets to query concurrently"
-                                },
-                                "file_path": {
-                                    "type": "string",
-                                    "description": "Absolute path to log file on remote target"
-                                },
-                                "lines": {
-                                    "type": "integer",
-                                    "description": "Number of lines to read from the end (default: 100)"
-                                }
-                            },
-                            "required": ["file_path"]
-                        }
-                    }),
-                    serde_json::json!({
-                        "name": "tail_container_logs",
-                        "description": "Fetch the last N lines of logs from a remote Docker container on a single host ('host') or multiple hosts concurrently ('hosts'). If using 'hosts', returns a JSON map mapping hostnames to their success status and container log output. Prefer 'hosts' to query container logs across multiple machines simultaneously.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "host": {
-                                    "type": "string",
-                                    "description": "The target hostname or IP address"
-                                },
-                                "hosts": {
-                                    "type": "array",
-                                    "items": { "type": "string" },
-                                    "description": "A list of hostname targets to query concurrently"
-                                },
-                                "container": {
-                                    "type": "string",
-                                    "description": "The Docker container name or ID"
-                                },
-                                "lines": {
-                                    "type": "integer",
-                                    "description": "Number of lines to read from the end (default: 100)"
-                                },
-                                "timestamps": {
-                                    "type": "boolean",
-                                    "description": "If true, includes timestamps in output (default: false)"
-                                }
-                            },
-                            "required": ["container"]
-                        }
-                    }),
-                    serde_json::json!({
-                        "name": "wait_for_log_pattern",
-                        "description": "Blocks and streams a remote log file or Docker container logs on a single host ('host') or multiple hosts concurrently ('hosts') until a regex 'pattern' is matched or a timeout is reached. If using 'hosts', returns a JSON map of hostnames to success/error/timeout statuses containing the matched line. Extremely useful for verifying startup or events across cluster nodes without polling.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "host": {
-                                    "type": "string",
-                                    "description": "The target hostname or IP address"
-                                },
-                                "hosts": {
-                                    "type": "array",
-                                    "items": { "type": "string" },
-                                    "description": "A list of hostname targets to query concurrently"
-                                },
-                                "file_path": {
-                                    "type": "string",
-                                    "description": "Absolute path to log file on remote target (provide either file_path or container)"
-                                },
-                                "container": {
-                                    "type": "string",
-                                    "description": "The Docker container name or ID to stream (provide either file_path or container)"
-                                },
-                                "pattern": {
-                                    "type": "string",
-                                    "description": "Regex pattern to match"
-                                },
-                                "timeout_secs": {
-                                    "type": "integer",
-                                    "description": "Maximum time to block (default: 60)"
-                                }
-                            },
-                            "required": ["pattern"]
-                        }
-                    }),
-                ];
-
-                for (name, tool) in &config.tools {
-                    let mut properties = serde_json::Map::new();
-                    let mut required = Vec::new();
-
-                    properties.insert(
-                        "host".to_string(),
-                        serde_json::json!({
-                            "type": "string",
-                            "description": "The target hostname or IP address"
-                        }),
-                    );
-                    properties.insert(
-                        "hosts".to_string(),
-                        serde_json::json!({
-                            "type": "array",
-                            "items": { "type": "string" },
-                            "description": "A list of hostname targets to query concurrently"
-                        }),
-                    );
-
-                    for (param_name, param_info) in &tool.params {
-                        properties.insert(
-                            param_name.clone(),
-                            serde_json::json!({
-                                "type": "string",
-                                "description": format!("Custom parameter (validation rule: {})", param_info.validation)
-                            }),
-                        );
-                        required.push(param_name.clone());
-                    }
-
-                    tools_arr.push(serde_json::json!({
-                        "name": name,
-                        "description": tool.description,
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": properties,
-                            "required": required
-                        }
-                    }));
-                }
-
+                let tools_arr = list_available_tools();
                 let tools_val = serde_json::json!({
                     "tools": tools_arr
                 });
@@ -948,6 +680,279 @@ pub fn make_temp_log_path(host: &str) -> std::path::PathBuf {
         .as_nanos();
     let rand_hex = format!("{:04x}", now & 0xffff);
     std::env::temp_dir().join(format!("agentic_ssh_{}_{}.log", host, rand_hex))
+}
+
+pub fn list_available_tools() -> Vec<serde_json::Value> {
+    let config = crate::ssh_pool::load_config();
+    let mut tools_arr = vec![
+        serde_json::json!({
+            "name": "list_hosts",
+            "description": "Returns the list of configured remote SSH hosts. Useful to see what remote machines are available to target.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            }
+        }),
+        serde_json::json!({
+            "name": "list_groups",
+            "description": "Returns a map of configured remote SSH host groups. The map keys represent group names, and the values are lists of target SSH hosts. Useful to see what multi-host SSH groups are available to query/run/watch.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            }
+        }),
+        serde_json::json!({
+            "name": "get_system_stats",
+            "description": "Fetch CPU load average, RAM, and disk utilization metrics on a single host ('host') or multiple hosts concurrently ('hosts'). If using 'hosts', returns a JSON map mapping hostnames to their metrics. Prefer 'hosts' to query cluster status in parallel.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "host": {
+                        "type": "string",
+                        "description": "The target hostname or IP address"
+                    },
+                    "hosts": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "A list of hostname targets to query concurrently"
+                    }
+                }
+            }
+        }),
+        serde_json::json!({
+            "name": "list_ports",
+            "description": "Lists active listening TCP/UDP ports, matching processes, and PIDs on a single host ('host') or multiple hosts concurrently ('hosts'). If using 'hosts', returns a JSON map mapping hostnames to their active port list. Optionally filter by 'port'. Prefer 'hosts' to scan service availability across multiple machines simultaneously.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "host": {
+                        "type": "string",
+                        "description": "The target hostname or IP address"
+                    },
+                    "hosts": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "A list of hostname targets to query concurrently"
+                    },
+                    "port": {
+                        "type": "integer",
+                        "description": "Optional port number to filter by"
+                    }
+                }
+            }
+        }),
+        serde_json::json!({
+            "name": "run_command",
+            "description": "Executes a shell command on a single host ('host') or multiple hosts concurrently ('hosts'). If using 'hosts', returns a JSON map mapping hostnames to their stdout, stderr, and exit codes. Features optional 'background' execution (starting the command and returning a local log file path immediately for async tracking), 'quiet' execution (suppressing progress logs), and output abbreviation controls. Prefer 'hosts' to execute commands across cluster nodes simultaneously.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "host": {
+                        "type": "string",
+                        "description": "The target hostname or IP address"
+                    },
+                    "hosts": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "A list of hostname targets to query concurrently"
+                    },
+                    "command": {
+                        "type": "string",
+                        "description": "The shell command to run on target"
+                    },
+                    "quiet": {
+                        "type": "boolean",
+                        "description": "If true, suppresses terminal progress logging in background files (default: false)"
+                    },
+                    "progress_interval_secs": {
+                        "type": "integer",
+                        "description": "Number of seconds between progress reporting updates (default: 5)"
+                    },
+                    "background": {
+                        "type": "boolean",
+                        "description": "If true, runs command in background and returns log path immediately (default: false)"
+                    },
+                    "abbreviate": {
+                        "type": "boolean",
+                        "description": "If true, limits long stdout output (default: true)"
+                    },
+                    "max_lines": {
+                        "type": "integer",
+                        "description": "Max lines to return if abbreviate is true (default: 100)"
+                    },
+                    "timeout_secs": {
+                        "type": "integer",
+                        "description": "Maximum execution time in seconds for the command (default: 60)"
+                    }
+                },
+                "required": ["command"]
+            }
+        }),
+        serde_json::json!({
+            "name": "search_processes",
+            "description": "Searches running processes on a single host ('host') or multiple hosts concurrently ('hosts') matching a regex 'pattern'. If using 'hosts', returns a JSON map mapping hostnames to their matched process list. Optionally returns full user/CPU/mem stats if 'full_info' is true. Prefer 'hosts' to find running services across multiple cluster nodes simultaneously.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "host": {
+                        "type": "string",
+                        "description": "The target hostname or IP address"
+                    },
+                    "hosts": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "A list of hostname targets to query concurrently"
+                    },
+                    "pattern": {
+                        "type": "string",
+                        "description": "Regex pattern to match against command lines (case-insensitive)"
+                    },
+                    "full_info": {
+                        "type": "boolean",
+                        "description": "If true, includes user, %cpu, %mem in output (default: false)"
+                    }
+                },
+                "required": ["pattern"]
+            }
+        }),
+        serde_json::json!({
+            "name": "tail_log",
+            "description": "Fetch the last N lines of a remote log file on a single host ('host') or multiple hosts concurrently ('hosts'). If using 'hosts', returns a JSON map mapping hostnames to their log output. Prefer 'hosts' to query logs across multiple machines simultaneously.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "host": {
+                        "type": "string",
+                        "description": "The target hostname or IP address"
+                    },
+                    "hosts": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "A list of hostname targets to query concurrently"
+                    },
+                    "file_path": {
+                        "type": "string",
+                        "description": "Absolute path to log file on remote target"
+                    },
+                    "lines": {
+                        "type": "integer",
+                        "description": "Number of lines to read from the end (default: 100)"
+                    }
+                },
+                "required": ["file_path"]
+            }
+        }),
+        serde_json::json!({
+            "name": "tail_container_logs",
+            "description": "Fetch the last N lines of logs from a remote Docker container on a single host ('host') or multiple hosts concurrently ('hosts'). If using 'hosts', returns a JSON map mapping hostnames to their success status and container log output. Prefer 'hosts' to query container logs across multiple machines simultaneously.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "host": {
+                        "type": "string",
+                        "description": "The target hostname or IP address"
+                    },
+                    "hosts": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "A list of hostname targets to query concurrently"
+                    },
+                    "container": {
+                        "type": "string",
+                        "description": "The Docker container name or ID"
+                    },
+                    "lines": {
+                        "type": "integer",
+                        "description": "Number of lines to read from the end (default: 100)"
+                    },
+                    "timestamps": {
+                        "type": "boolean",
+                        "description": "If true, includes timestamps in output (default: false)"
+                    }
+                },
+                "required": ["container"]
+            }
+        }),
+        serde_json::json!({
+            "name": "wait_for_log_pattern",
+            "description": "Blocks and streams a remote log file or Docker container logs on a single host ('host') or multiple hosts concurrently ('hosts') until a regex 'pattern' is matched or a timeout is reached. If using 'hosts', returns a JSON map of hostnames to success/error/timeout statuses containing the matched line. Extremely useful for verifying startup or events across cluster nodes without polling.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "host": {
+                        "type": "string",
+                        "description": "The target hostname or IP address"
+                    },
+                    "hosts": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "A list of hostname targets to query concurrently"
+                    },
+                    "file_path": {
+                        "type": "string",
+                        "description": "Absolute path to log file on remote target (provide either file_path or container)"
+                    },
+                    "container": {
+                        "type": "string",
+                        "description": "The Docker container name or ID to stream (provide either file_path or container)"
+                    },
+                    "pattern": {
+                        "type": "string",
+                        "description": "Regex pattern to match"
+                    },
+                    "timeout_secs": {
+                        "type": "integer",
+                        "description": "Maximum time to block (default: 60)"
+                    }
+                },
+                "required": ["pattern"]
+            }
+        }),
+    ];
+
+    for (name, tool) in &config.tools {
+        let mut properties = serde_json::Map::new();
+        let mut required = Vec::new();
+
+        properties.insert(
+            "host".to_string(),
+            serde_json::json!({
+                "type": "string",
+                "description": "The target hostname or IP address"
+            }),
+        );
+        properties.insert(
+            "hosts".to_string(),
+            serde_json::json!({
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "A list of hostname targets to query concurrently"
+            }),
+        );
+
+        for (param_name, param_info) in &tool.params {
+            properties.insert(
+                param_name.clone(),
+                serde_json::json!({
+                    "type": "string",
+                    "description": format!("Custom parameter (validation rule: {})", param_info.validation)
+                }),
+            );
+            required.push(param_name.clone());
+        }
+
+        tools_arr.push(serde_json::json!({
+            "name": name,
+            "description": tool.description,
+            "inputSchema": {
+                "type": "object",
+                "properties": properties,
+                "required": required
+            }
+        }));
+    }
+
+    tools_arr
 }
 
 pub fn find_matched_line(buf: &mut Vec<u8>, re: &regex::Regex) -> Option<String> {
