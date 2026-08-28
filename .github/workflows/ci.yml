@@ -68,9 +68,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Linux
+          - name: Linux (x86_64)
             runner: ubuntu-latest
-          - name: macOS
+          - name: Linux (ARM64)
+            runner: ubuntu-24.04-arm
+          - name: macOS (Apple Silicon)
             runner: macos-14
     steps:
       - uses: actions/checkout@v7
