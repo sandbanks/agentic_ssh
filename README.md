@@ -4,11 +4,13 @@
 [![Crates.io](https://img.shields.io/crates/v/agentic_ssh.svg)](https://crates.io/crates/agentic_ssh)
 [![Homebrew](https://img.shields.io/badge/brew-sandbanks%2Ftap-orange?logo=homebrew)](https://github.com/sandbanks/agentic_ssh#quick-start)
 
-# `agentic_ssh` 🛰️⚡️
+# `agentic_ssh` 🛰️🛡️
 
-> **Give your AI agents SSH superpowers across your servers—without melting your context window or blowing up your infrastructure.**
+> **Stop your AI agent from nosing around your SSH connections without permission.**
+> 
+> A secure-by-default SSH connection pool & MCP server for AI coding assistants (Claude Code, Cursor, Gemini, Antigravity, Copilot, Cline).
 
-`agentic_ssh` is a fast, lightweight **Model Context Protocol (MCP) server & CLI written in Rust** that gives AI coding assistants (Claude Code, Cursor, Gemini, Antigravity, Copilot, Zed, Cline) safe, token-efficient, and asynchronous SSH access to your homelab, servers, or cloud clusters.
+`agentic_ssh` gives your AI assistant fast, token-efficient, and asynchronous SSH access to your homelab, dev servers, and clusters—**with strict zero-trust host guardrails so it can never touch unauthorized infrastructure.**
 
 ![AI Agent Multi-Host Interrogation & Security Guardrail](https://assets.sandbanks.tech/agentic_ssh/agentic_ssh_hero.gif)
 
@@ -16,34 +18,34 @@
 
 | Metric / Scenario | Raw SSH in Agent Prompt | With `agentic_ssh` MCP | The Difference |
 | :--- | :--- | :--- | :--- |
+| **Security & Blast Radius** | Full access to every host in `~/.ssh/config` | **Strict Whitelist Guardrail** (`allow_hosts`) | Unauthorized hosts blocked 🛡️ |
 | **Context Window Consumption** | 15,000+ tokens (raw stdout dump) | **185 tokens** (structured JSON telemetry) | **98.8% token savings** 📉 |
 | **API Cost per Query** | ~$0.05 – $0.15 | **~$0.0004** | Fraction of a cent 💰 |
-| **Security & Blast Radius** | Full access to every host in `~/.ssh/config` | **Strict Whitelist Guardrail** (`allow_hosts`) | Unauthorized hosts blocked 🛡️ |
 | **Connection Latency** | 800ms – 1.5s reconnect handshake | **0ms** (pooled Keepalive socket) | Instant response ⚡️ |
 | **Long-Running Builds** | Blocks agent reasoning / silent dropout | **Detached async** (`background: true`) | Parallel workflows 🚀 |
 
 ---
 
-## 🛑 Why AI Agents + Raw SSH Is a Bad Idea
+## 🛑 Why Giving AI Agents Raw SSH Is a Bad Idea
 
-If you've ever watched an AI agent try to use standard terminal SSH, you've probably seen:
+If you've ever let an autonomous agent run raw terminal `ssh`, you're exposing your machines to huge risks:
 
-* 💥 **The Context Avalanche**: The agent runs `apt upgrade` or `cargo build`, and **15,000 lines of compiler noise** dump straight into your context window—wiping out memory, hitting limits, and costing money.
+* 🚨 **Unrestricted Fleet Access ("Nosing Around")**: Standard agent bash tools have full, unchecked access to your `~/.ssh/config`. If you ask an agent to inspect a local dev box, **nothing stops it from querying your production database, jumping through client bastions, or running rogue commands where it shouldn't.**
+* 💥 **The Context Avalanche**: The agent runs `apt upgrade` or `cargo build`, and **15,000 lines of compiler noise** dump straight into your context window—wiping out memory, blowing up rate limits, and wasting money.
 * 👻 **Silent Death by Dropout**: Cloud NATs and Tailscale love to silently drop idle SSH sockets during a 10-minute compile. The agent hangs forever waiting for output that will never arrive.
 * 😵‍💫 **Nested Escaping Hell**: Asking an LLM to quote bash inside an SSH string inside an MCP JSON payload (`ssh host "bash -c \"echo 'hello'\""`) invariably leads to broken quotes and syntax errors.
-* 💣 **The Rogue Command**: A hallucinating agent with unrestricted SSH access can accidentally reboot or delete the wrong machine.
 
 ---
 
 ## 🪄 How `agentic_ssh` Fixes This
 
-| The Problem | `agentic_ssh` Solution |
+| The Danger | `agentic_ssh` Zero-Trust Solution |
 | :--- | :--- |
+| **Unchecked Server Access** | **Strict Host Whitelist (`allow_hosts`)**: If `allow_hosts` is not configured, **all hosts are blocked by default**. Your agent can only touch machines you have explicitly approved. |
 | **Bloated Context Windows** | Automatically summarizes verbose outputs and redirects large streams to isolated local session logs (`~/.agentic_ssh/sessions/`). |
 | **Dropped Sockets & Lag** | Rust-native connection pooling (`russh`) with automatic 30s keepalives and zero-latency session reuse. |
 | **Broken Quoting** | Arguments are structured and escaped natively behind the scenes—zero escaping headaches for the model. |
 | **Blocking Long Tasks** | Supports `background: true`—fires long builds or migrations into detached threads so the agent can keep working. |
-| **Rogue Actions** | Strict whitelist boundaries (`allow_hosts`, `ignore_hosts`) and cryptographically signed local configs. |
 
 ---
 
