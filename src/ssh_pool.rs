@@ -561,24 +561,28 @@ fn is_host_ignored_impl(
     let host_lower = host.to_lowercase();
     let resolved_lower = resolved_host.map(|s| s.to_lowercase());
 
-    // 1. If allowlist is not empty, host must match at least one allow pattern
-    if !allow_hosts.is_empty() {
-        let mut allowed = false;
-        for pattern_str in allow_hosts {
-            if match_host_pattern(pattern_str, &host_lower, resolved_lower.as_ref()) {
-                allowed = true;
-                break;
-            }
+    // 1. Secure by default: If allow_hosts is empty, NO hosts are permitted.
+    // Explicit opt-in (e.g. allow_hosts = ["host1", "host2"] or allow_hosts = ["*"]) is required.
+    if allow_hosts.is_empty() {
+        return true;
+    }
+
+    // Host must match at least one allow pattern
+    let mut allowed = false;
+    for pattern_str in allow_hosts {
+        if match_host_pattern(pattern_str, &host_lower, resolved_lower.as_ref()) {
+            allowed = true;
+            break;
         }
-        if !allowed {
-            return true; // Blocked because it's not in the allowlist
-        }
+    }
+    if !allowed {
+        return true; // Blocked because it's not in the allowlist
     }
 
     // 2. If it matches any pattern in ignore_hosts, it is ignored
     for pattern_str in ignore_hosts {
-        // If it's "*" and we already matched allowlist, skip it
-        if pattern_str == "*" && !allow_hosts.is_empty() {
+        if pattern_str == "*" && !allow_hosts.is_empty() && !allow_hosts.contains(&"*".to_string())
+        {
             continue;
         }
         if match_host_pattern(pattern_str, &host_lower, resolved_lower.as_ref()) {
@@ -802,11 +806,20 @@ impl ConnectionPool {
         };
 
         if is_host_ignored(host, Some(&real_host)) {
-            return Err(anyhow!(
-                "Access to host '{}' (resolved: '{}') is blocked by ignore rules",
-                host,
-                real_host
-            ));
+            let config = load_config();
+            if config.allow_hosts.is_empty() {
+                return Err(anyhow!(
+                    "Access to host '{}' (resolved: '{}') is blocked. agentic_ssh is secure by default: no SSH hosts are permitted until explicitly listed in 'allow_hosts' in ~/.config/agentic_ssh/config.toml or .agentic_ssh.toml.",
+                    host,
+                    real_host
+                ));
+            } else {
+                return Err(anyhow!(
+                    "Access to host '{}' (resolved: '{}') is blocked by security boundaries (allow_hosts / ignore_hosts)",
+                    host,
+                    real_host
+                ));
+            }
         }
 
         let mut map = self.connections.lock().await;
@@ -1237,21 +1250,43 @@ mod tests {
             &allow_list
         ));
 
-        // Non-matching
-        assert!(!is_host_ignored_impl(
+        // Empty allow_list: ALL hosts blocked by default (secure-by-default)
+        assert!(is_host_ignored_impl(
             "dev-server",
             Some("10.0.0.5"),
             &ignore_list,
             &allow_list
         ));
-        assert!(!is_host_ignored_impl(
+        assert!(is_host_ignored_impl(
             "company.com",
             None,
             &ignore_list,
             &allow_list
         ));
 
-        // Test allowlist block by default
+        // Test explicit wildcard allowlist ["*"]
+        let wildcard_allow = vec!["*".to_string()];
+        assert!(!is_host_ignored_impl(
+            "dev-server",
+            Some("10.0.0.5"),
+            &ignore_list,
+            &wildcard_allow
+        ));
+        assert!(!is_host_ignored_impl(
+            "company.com",
+            None,
+            &ignore_list,
+            &wildcard_allow
+        ));
+        // Ignored hosts remain blocked even with wildcard allowlist
+        assert!(is_host_ignored_impl(
+            "db-prod",
+            None,
+            &ignore_list,
+            &wildcard_allow
+        ));
+
+        // Test explicit allowlist
         let allow_list_2 = vec!["*.staging.company.com".to_string(), "my-host".to_string()];
         assert!(!is_host_ignored_impl(
             "my-host",
@@ -1270,6 +1305,12 @@ mod tests {
         let ignore_all = vec!["*".to_string()];
         assert!(!is_host_ignored_impl(
             "my-host",
+            None,
+            &ignore_all,
+            &allow_list_2
+        )); // Allowed because it is in allowlist (even though ignore_all is *)
+        assert!(is_host_ignored_impl(
+            "other-host",
             None,
             &ignore_all,
             &allow_list_2

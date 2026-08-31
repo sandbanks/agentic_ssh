@@ -140,6 +140,18 @@ fn check_ssh_environment(dc: &mut DoctorCounters) {
                     dc.warn(&format!("Failed to parse SSH config: {e}"));
                 }
             }
+
+            // Check agentic_ssh allow_hosts security configuration
+            let config = ssh_pool::load_config();
+            if config.allow_hosts.is_empty() {
+                dc.warn("No 'allow_hosts' defined in config.toml or .agentic_ssh.toml. agentic_ssh is secure by default: all SSH hosts are blocked until explicitly added to allow_hosts.");
+            } else {
+                dc.pass(&format!(
+                    "Secure allowlist active: {} pattern(s) configured ({})",
+                    config.allow_hosts.len(),
+                    config.allow_hosts.join(", ")
+                ));
+            }
         } else {
             dc.warn("~/.ssh/config does not exist. AI agents may not know which SSH hosts are available.");
         }

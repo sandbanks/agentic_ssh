@@ -89,6 +89,12 @@ impl McpServer {
     }
 
     pub async fn run(&self) -> Result<()> {
+        let config = crate::ssh_pool::load_config();
+        if config.allow_hosts.is_empty() {
+            eprintln!(
+                "\x1b[33m⚠️  SECURITY NOTICE: 'allow_hosts' is empty in config.toml. agentic_ssh is secure by default: all SSH hosts are blocked until explicitly added to allow_hosts.\x1b[0m"
+            );
+        }
         eprintln!("agentic_ssh MCP server starting up...");
         let stdin = tokio::io::stdin();
         let mut reader = BufReader::new(stdin);
