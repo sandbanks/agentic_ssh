@@ -10,7 +10,7 @@
 
 `agentic_ssh` is a fast, lightweight **Model Context Protocol (MCP) server & CLI written in Rust** that gives AI coding assistants (Claude Code, Cursor, Gemini, Antigravity, Copilot, Zed, Cline) safe, token-efficient, and asynchronous SSH access to your homelab, servers, or cloud clusters.
 
-![AI Agent Multi-Host Interrogation & Security Guardrail](https://sandbanks.tech/agentic_ssh/agentic_ssh_hero.gif)
+![AI Agent Multi-Host Interrogation & Security Guardrail](https://assets.sandbanks.tech/agentic_ssh/agentic_ssh_hero.gif)
 
 ### 📊 Token & Quota Impact: Raw SSH vs. `agentic_ssh`
 
@@ -115,7 +115,7 @@ Once installed, just talk to your agent naturally. Here are real-world prompts y
 ### `agentic_ssh watch`: Multi-Host Live Streaming TUI
 Watch commands run concurrently across multiple servers with live streaming panes and post-run log inspection:
 
-![Multi-Host Command Watcher TUI](https://sandbanks.tech/agentic_ssh/agentic_ssh_watch.gif)
+![Multi-Host Command Watcher TUI](https://assets.sandbanks.tech/agentic_ssh/agentic_ssh_watch.gif)
 
 ```bash
 # Watch a command on multiple hosts concurrently
