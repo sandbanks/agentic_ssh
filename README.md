@@ -96,37 +96,39 @@ Once installed, just talk to your agent naturally. Here are real-world prompts y
 
 ---
 
-## 🖥️ CLI Superpowers for Humans (`ash`)
+## 🖥️ CLI Superpowers for Humans (Built-in Terminal Tools)
 
-`agentic_ssh` isn't just an MCP server for AI—it includes human CLI commands:
+`agentic_ssh` isn't just an MCP server for AI—it includes powerful CLI tools for human developers too:
 
-### `ash watch`: Multi-Host Live Streaming TUI
+> 💡 **Tip:** Add `alias ash="agentic_ssh"` to your `~/.zshrc` or `~/.bashrc` to save keystrokes!
+
+### `agentic_ssh watch`: Multi-Host Live Streaming TUI
 Watch commands run concurrently across multiple servers with live streaming panes and post-run log inspection:
 
 ```bash
 # Watch a command on multiple hosts concurrently
-ash watch stan,cartman,aruba "pnpm --version"
+agentic_ssh watch stan,cartman,aruba "pnpm --version"
 
 # Watch an entire host group defined in your config
-ash watch web-fleet "docker compose ps"
+agentic_ssh watch web-fleet "docker compose ps"
 ```
 
-### `ash json`: Instant Multi-Host Scripting
+### `agentic_ssh json`: Instant Multi-Host Scripting
 Call any built-in MCP diagnostic tool directly from your terminal and get clean, parseable JSON:
 
 ```bash
 # Get structured system stats across hosts
-ash json get_system_stats stan,cartman
+agentic_ssh json get_system_stats stan,cartman
 
 # Query listening ports
-ash json list_ports '{"hosts": ["stan", "aruba"]}'
+agentic_ssh json list_ports '{"hosts": ["stan", "aruba"]}'
 ```
 
-### `ash tui`: Live Connection Pool Dashboard
+### `agentic_ssh tui`: Live Connection Pool Dashboard
 Inspect active SSH sockets, heartbeat metrics, and connection lifetimes:
 
 ```bash
-ash tui
+agentic_ssh tui
 ```
 
 ---
