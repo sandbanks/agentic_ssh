@@ -1,3 +1,5 @@
+<!-- mcp-name: io.github.sandbanks/agentic_ssh -->
+
 [![Release](https://github.com/sandbanks/agentic_ssh/actions/workflows/release.yml/badge.svg)](https://github.com/sandbanks/agentic_ssh/actions/workflows/release.yml)
 [![Sponsor](https://img.shields.io/badge/Sponsor-sandbanks-ea4aaa?style=flat-square&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/sandbanks)
 [![MCP Toplist](https://mcptoplist.com/badge/io.github.sandbanks%2Fagentic_ssh.svg)](https://mcptoplist.com/server/io.github.sandbanks%2Fagentic_ssh)
