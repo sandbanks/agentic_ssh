@@ -28,7 +28,7 @@
 
         agentic_ssh-pkg = pkgs.rustPlatform.buildRustPackage {
           pname = "agentic_ssh";
-          version = "0.4.10";
+          version = "0.5.0";
           src = ./.;
 
           cargoHash = "sha256-FOHtjqeO1DGRnf6PaHgPDKvAUKm4UkJHWHvYO15CsxQ=";
