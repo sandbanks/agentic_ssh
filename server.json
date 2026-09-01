@@ -7,12 +7,12 @@
     "url": "https://github.com/sandbanks/agentic_ssh",
     "source": "github"
   },
-  "version": "0.5.2",
+  "version": "0.5.3",
   "packages": [
     {
       "registryType": "cargo",
       "identifier": "agentic_ssh",
-      "version": "0.5.2",
+      "version": "0.5.3",
       "transport": {
         "type": "stdio"
       }

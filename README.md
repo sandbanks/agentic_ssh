@@ -221,3 +221,8 @@ If `agentic_ssh` saves your token budget, secures your infrastructure, or makes 
 ## 📄 License
 
 Dual-licensed under MIT and Apache 2.0.
+
+---
+
+<sub>MCP Server Identifier: `mcp-name: io.github.sandbanks/agentic_ssh`</sub>
+

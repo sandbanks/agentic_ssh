@@ -214,7 +214,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Wait for Crates.io index
-        run: sleep 30
+        run: sleep 60
 
       - name: Install mcp-publisher
         run: |
