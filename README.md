@@ -1,4 +1,5 @@
 [![Release](https://github.com/sandbanks/agentic_ssh/actions/workflows/release.yml/badge.svg)](https://github.com/sandbanks/agentic_ssh/actions/workflows/release.yml)
+[![Sponsor](https://img.shields.io/badge/Sponsor-sandbanks-ea4aaa?style=flat-square&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/sandbanks)
 [![MCP Toplist](https://mcptoplist.com/badge/io.github.sandbanks%2Fagentic_ssh.svg)](https://mcptoplist.com/server/io.github.sandbanks%2Fagentic_ssh)
 [![agentic_ssh MCP server](https://glama.ai/mcp/servers/sandbanks/agentic_ssh/badges/score.svg)](https://glama.ai/mcp/servers/sandbanks/agentic_ssh)
 [![Crates.io](https://img.shields.io/crates/v/agentic_ssh.svg)](https://crates.io/crates/agentic_ssh)
@@ -200,6 +201,18 @@ allow_hosts = ["stan", "cartman"]
   * **Russh**: High-performance pure Rust SSH client.
   * **Ratatui**: Gorgeous terminal user interfaces.
   * **Enzo**: MCP installer inspiration from `tokensave`.
+
+---
+
+## 💖 Sponsoring Sandbanks
+
+`agentic_ssh` is built and maintained as independent, sovereign open-source software.
+
+If `agentic_ssh` saves your token budget, secures your infrastructure, or makes your AI pair-programming workflow faster:
+
+👉 **[Sponsor @sandbanks on GitHub Sponsors](https://github.com/sponsors/sandbanks)**
+
+* Sponsoring unlocks the **GitHub Sponsor badge**, access to the private **`sandbanks/vip`** discussions and early RFCs, and priority issue triage.
 
 ---
 
