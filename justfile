@@ -32,7 +32,7 @@ update-nix-hash:
     echo "🔍 Checking Nix cargoHash..."
     OUTPUT=$(nix build --no-link 2>&1 || true)
     if echo "$OUTPUT" | grep -q "got:[[:space:]]*sha256-"; then
-        NEW_HASH=$(echo "$OUTPUT" | grep -o 'got:[[:space:]]*sha256-[^[:space:]]*' | awk '{print $2}')
+        NEW_HASH=$(echo "$OUTPUT" | grep -E 'got:[[:space:]]+sha256-' | head -n 1 | sed -E 's/.*(sha256-[^[:space:]]+).*/\1/')
         echo "🔄 Updating flake.nix with new hash: $NEW_HASH"
         sed -i.bak -E "s|cargoHash = \"sha256-[^\"]+\";|cargoHash = \"$NEW_HASH\";|" flake.nix
         rm -f flake.nix.bak
