@@ -15,3 +15,5 @@
 .beads/.*
 Dockerfile
 demo/*.mp4
+# br doctor per-run artifacts
+.doctor/

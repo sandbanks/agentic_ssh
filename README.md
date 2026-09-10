@@ -29,6 +29,18 @@
 
 ---
 
+## 💡 Why I Built This
+
+I built `agentic_ssh` after watching my AI coding agent do remote server triage across my own fleet of machines.
+
+I asked it to investigate an anomaly. I sat there watching as it opened the same SSH connection time after time to talk to the same remote server, checking one small thing at a time. When querying multiple nodes, it would ask the exact same question of each server individually, running fresh TCP/SSH handshakes for every single command.
+
+Worse, every single `docker logs` or system check dumped hundreds—sometimes thousands—of tokens of raw terminal noise and ANSI escape codes straight into the context window, chewing through my API budget in minutes. And whenever an idle SSH connection dropped mid-query, the agent would lose its place and spin in retry loops.
+
+I realised that could be dramatically streamlined with a dedicated, connection-pooled, security-first MCP server.
+
+---
+
 ## 🛑 Why Giving AI Agents Raw SSH Is a Bad Idea
 
 If you've ever let an autonomous agent run raw terminal `ssh`, you're exposing your machines to huge risks:
