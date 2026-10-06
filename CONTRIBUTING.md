@@ -94,17 +94,24 @@ just update-nix-hash
 just check-nix
 ```
 
-### Step 5: Push and Verify CI
-Commit the updated `flake.nix` to the PR branch and push:
+### Step 5: Sync Issue Tracking & Stage Changes
+If any beads issues were opened, updated, or closed during the task, flush the Beads database to JSONL **before** committing so the issue tracker state is included in the commit:
 ```bash
-git add flake.nix Cargo.lock
-git commit -m "chore(nix): update cargoHash"
+br sync --flush-only
+git status              # Verify code + .beads/issues.jsonl
+git add <files> .beads/issues.jsonl
+```
+
+### Step 6: Commit, Push, and Verify CI
+Commit the changes (including `flake.nix` and beads data if updated) and push:
+```bash
+git commit -m "chore(deps): update cargoHash and sync beads"
 git push
 ```
 
-GitHub Actions will re-trigger and turn green.
+GitHub Actions will run and turn green.
 
-### Step 6: Merge
+### Step 7: Merge
 Once CI passes:
 ```bash
 gh pr merge <PR_NUMBER> --squash --delete-branch
@@ -112,12 +119,20 @@ gh pr merge <PR_NUMBER> --squash --delete-branch
 
 ---
 
-## 📋 Beads Issue Protocol
+## 📋 Beads Issue Protocol & Session Checklist
 
 Issues and tasks are tracked via Beads (`br` / `bd`):
+- `br ready` to find open, unblocked work at the start of a session.
+- `br update <id> --status=in_progress` to claim work.
+- `br close <id> --reason="Completed"` upon completion.
+
+### Pre-Push / Session End Checklist
+Always follow this order so `.beads/issues.jsonl` is never left behind:
 ```bash
-br ready              # Find open, unblocked work
-br update <id> --status=in_progress
-br close <id> --reason="Completed"
-br sync --flush-only  # Always flush DB to JSONL before ending session
+1. just release-check    # Verify tests, fmt, clippy, and Nix build
+2. br sync --flush-only  # Export beads DB to .beads/issues.jsonl
+3. git status            # Review staged and unstaged files
+4. git add <files>       # Stage code changes AND .beads/issues.jsonl together
+5. git commit -m "..."   # Atomic commit containing code + issue updates
+6. git push              # Push to remote
 ```
