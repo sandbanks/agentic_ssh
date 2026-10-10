@@ -31,7 +31,7 @@
           version = "0.5.3";
           src = ./.;
 
-          cargoHash = "sha256-1mwJRCgJ465bTFYCTwAsS003TVWlQZk0kUIus4LlkXk=";
+          cargoHash = "sha256-r2+8iCd/G5RX5zY4h0zpvg51mJXYuCvCGTLsHJsE7GA=";
 
           buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
             pkgs.apple-sdk_15
