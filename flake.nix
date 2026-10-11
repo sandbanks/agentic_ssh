@@ -28,10 +28,10 @@
 
         agentic_ssh-pkg = pkgs.rustPlatform.buildRustPackage {
           pname = "agentic_ssh";
-          version = "0.5.3";
+          version = "0.5.4";
           src = ./.;
 
-          cargoHash = "sha256-r2+8iCd/G5RX5zY4h0zpvg51mJXYuCvCGTLsHJsE7GA=";
+          cargoHash = "sha256-4Be+h2uMZVLjkn+KyI+TAOlDiutTkw4fEVMmq3vg+Fg=";
 
           buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
             pkgs.apple-sdk_15
