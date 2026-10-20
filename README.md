@@ -154,7 +154,7 @@ agentic_ssh json list_ports '{"hosts": ["stan", "aruba"]}'
 ```
 
 ### `agentic_ssh tui`: Live Connection Pool Dashboard
-Inspect active SSH sockets, heartbeat metrics, and connection lifetimes:
+Inspect active SSH sockets, heartbeat metrics, connection lifetimes, and live running commands (with remote PID/PGID and timeout countdowns) inline under each host:
 
 ```bash
 agentic_ssh tui
@@ -206,6 +206,11 @@ description = "Pulls latest compose repo and updates stack containers."
 command = ["docker", "compose", "-f", "/opt/app/docker-compose.yml", "up", "-d"]
 allow_hosts = ["stan", "cartman"]
 ```
+
+### Remote Shell Requirements & Timeout Process Cleanup
+`agentic_ssh` tracks every active remote command in an in-memory registry and automatically kills timed-out commands (and their spawned child processes) using their remote Process Group ID (`PGID`).
+* **POSIX Shell Requirement**: Remote targets are assumed to provide a POSIX-compliant `sh` or `bash` (and optionally `setsid` for isolated process groups).
+* **Graceful Fallback**: If a target uses a non-POSIX login shell where the PID sentinel cannot be detected, `agentic_ssh` logs a warning and falls back to best-effort channel closure without failing the command.
 
 ---
 

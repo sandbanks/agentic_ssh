@@ -25,13 +25,14 @@
       system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+        cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
 
         agentic_ssh-pkg = pkgs.rustPlatform.buildRustPackage {
           pname = "agentic_ssh";
-          version = "0.5.4";
+          version = cargoToml.package.version;
           src = ./.;
 
-          cargoHash = "sha256-cyhO50u5oAWnfPlA0A0FBfp2jhOav3qUriWNHF+2Qxs=";
+          cargoHash = "sha256-edVM5czbh54dJ09E5tpramfazaPIOi+rny0oR9D974E=";
 
           buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
             pkgs.apple-sdk_15

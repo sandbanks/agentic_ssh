@@ -521,6 +521,62 @@ fn print_tools(json: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn truncate_with_ellipsis(text: &str, max_chars: usize) -> String {
+    let single_line: String = text
+        .chars()
+        .map(|c| {
+            if c == '\n' || c == '\r' || c == '\t' {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect();
+    let char_count = single_line.chars().count();
+    if char_count <= max_chars {
+        return single_line;
+    }
+    if max_chars <= 3 {
+        return ".".repeat(max_chars);
+    }
+    let kept: String = single_line.chars().take(max_chars - 3).collect();
+    format!("{}...", kept)
+}
+
+fn format_tui_command_tree_row(
+    cmd: &ssh_pool::RunningCommandStatus,
+    is_last: bool,
+    inner_width: usize,
+) -> String {
+    let branch = if is_last { "  └─ " } else { "  ├─ " };
+    let pid_part = match cmd.remote_pid {
+        Some(pid) => format!("[PID {}] ", pid),
+        None => "[PID ...] ".to_string(),
+    };
+    let timing_part = format!(" ({}s/{}s)", cmd.elapsed_secs, cmd.timeout_secs);
+
+    // Content must fit within `inner_width - 2` (leaving 1 space padding inside each `│` border).
+    let content_budget = inner_width.saturating_sub(2);
+    let fixed_chars =
+        branch.chars().count() + pid_part.chars().count() + timing_part.chars().count();
+    let cmd_budget = content_budget.saturating_sub(fixed_chars);
+    let truncated_cmd = truncate_with_ellipsis(&cmd.command, cmd_budget);
+
+    let full_text = format!("{}{}{}{}", branch, pid_part, truncated_cmd, timing_part);
+    let text_chars = full_text.chars().count();
+    let pad_right = content_budget.saturating_sub(text_chars);
+
+    format!(
+        "│ \x1B[90m{}{}\x1B[36m{}\x1B[0m{}\x1B[90m{}\x1B[0m{} │",
+        branch,
+        "",
+        pid_part,
+        truncated_cmd,
+        timing_part,
+        " ".repeat(pad_right)
+    )
+}
+
 fn run_tui() -> anyhow::Result<()> {
     println!("Starting agentic_ssh TUI Dashboard... Press Ctrl+C to exit.");
     let path_buf = ssh_pool::get_pool_status_path();
@@ -542,7 +598,8 @@ fn run_tui() -> anyhow::Result<()> {
                 for status in statuses {
                     let elapsed_secs = now_unix.saturating_sub(status.last_used_timestamp);
                     let remaining_secs = status.idle_timeout_secs.saturating_sub(elapsed_secs);
-                    let is_executing = status.status == "Executing";
+                    let is_executing =
+                        status.status == "Executing" || !status.running_commands.is_empty();
 
                     if remaining_secs > 0 || is_executing {
                         let last_used_str = if is_executing {
@@ -566,6 +623,7 @@ fn run_tui() -> anyhow::Result<()> {
                             last_used_str,
                             auto_close_str,
                             status_str,
+                            status.running_commands,
                         ));
                     }
                 }
@@ -609,7 +667,9 @@ fn run_tui() -> anyhow::Result<()> {
                 width = inner_width
             );
         } else {
-            for (host, last_used_str, auto_close_str, status_str) in &active_connections {
+            for (host, last_used_str, auto_close_str, status_str, running_cmds) in
+                &active_connections
+            {
                 let status_color = if status_str == "Executing" {
                     "\x1B[33m" // Yellow for executing
                 } else {
@@ -624,12 +684,25 @@ fn run_tui() -> anyhow::Result<()> {
                     status_str,
                     width = max_host_len
                 );
+                let total_cmds = running_cmds.len();
+                for (idx, cmd) in running_cmds.iter().enumerate() {
+                    let is_last = idx + 1 == total_cmds;
+                    println!("{}", format_tui_command_tree_row(cmd, is_last, inner_width));
+                }
             }
         }
 
         println!("{}", border_bot);
         if daemon_active {
-            println!("Active connections: {}", active_connections.len());
+            let total_running: usize = active_connections
+                .iter()
+                .map(|(_, _, _, _, cmds)| cmds.len())
+                .sum();
+            println!(
+                "Active connections: {} | Running commands: {}",
+                active_connections.len(),
+                total_running
+            );
         } else {
             println!("Active connections: 0 (Daemon offline)");
         }
@@ -783,5 +856,37 @@ mod tests {
         assert!(names.contains(&"tail_log"));
         assert!(names.contains(&"tail_container_logs"));
         assert!(names.contains(&"wait_for_log_pattern"));
+    }
+
+    #[test]
+    fn test_truncate_with_ellipsis() {
+        assert_eq!(truncate_with_ellipsis("short cmd", 20), "short cmd");
+        assert_eq!(
+            truncate_with_ellipsis("docker compose -f /opt/app/docker-compose.yml up -d", 20),
+            "docker compose -f..."
+        );
+        assert_eq!(
+            truncate_with_ellipsis("line1\nline2\tline3", 20),
+            "line1 line2 line3"
+        );
+    }
+
+    #[test]
+    fn test_format_tui_command_tree_row() {
+        let cmd = ssh_pool::RunningCommandStatus {
+            command: "apt-get update && apt-get dist-upgrade -y --no-install-recommends"
+                .to_string(),
+            remote_pid: Some(4210),
+            session_id: "job_2026_aruba_0001".to_string(),
+            elapsed_secs: 12,
+            timeout_secs: 60,
+        };
+        let row = format_tui_command_tree_row(&cmd, true, 75);
+        assert!(row.contains("└─ "));
+        assert!(row.contains("[PID 4210]"));
+        assert!(row.contains("..."));
+        assert!(row.contains("(12s/60s)"));
+        assert!(row.starts_with('│'));
+        assert!(row.ends_with('│'));
     }
 }

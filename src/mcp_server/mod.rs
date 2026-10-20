@@ -322,7 +322,14 @@ impl McpServer {
                     async move {
                         let log_path = make_temp_log_path(&host);
                         let (stdout, stderr, exit_code) = pool
-                            .execute_command(&host, &cmd_to_run, true, 5, log_path.clone())
+                            .execute_command(
+                                &host,
+                                &cmd_to_run,
+                                true,
+                                5,
+                                log_path.clone(),
+                                Duration::from_secs(15),
+                            )
                             .await?;
                         let _ = std::fs::remove_file(&log_path);
                         if exit_code != 0 {
@@ -432,6 +439,7 @@ impl McpServer {
                             background,
                             abbreviate,
                             max_lines,
+                            timeout_secs,
                         )
                         .await
                     }
@@ -991,7 +999,9 @@ where
         }))
     } else {
         let host = &hosts[0];
-        let timeout_dur = Duration::from_secs(timeout_secs);
+        // Allow an 8s grace window beyond `timeout_secs` so `execute_command`'s internal timeout
+        // can log and kill the remote process group (up to 5s) before the outer safety timeout fires.
+        let timeout_dur = Duration::from_secs(timeout_secs.saturating_add(8));
         let res = tokio::time::timeout(timeout_dur, f(host.to_string())).await;
         match res {
             Ok(Ok(val)) => {
@@ -1032,7 +1042,7 @@ where
         let f_clone = f_arc.clone();
         join_set.spawn(async move {
             let fut = f_clone(host.clone());
-            let timeout_dur = Duration::from_secs(timeout_secs);
+            let timeout_dur = Duration::from_secs(timeout_secs.saturating_add(8));
             let result = tokio::time::timeout(timeout_dur, fut).await;
 
             let payload = match result {
@@ -1040,10 +1050,18 @@ where
                     "status": "success",
                     "data": val
                 }),
-                Ok(Err(e)) => serde_json::json!({
-                    "status": "error",
-                    "error": format!("{:#}", e)
-                }),
+                Ok(Err(e)) => {
+                    let err_str = format!("{:#}", e);
+                    let status = if err_str.contains("timed out after") {
+                        "timeout"
+                    } else {
+                        "error"
+                    };
+                    serde_json::json!({
+                        "status": status,
+                        "error": err_str
+                    })
+                }
                 Err(_) => serde_json::json!({
                     "status": "timeout",
                     "error": format!("Timed out after {} seconds", timeout_secs)

@@ -13,7 +13,14 @@ pub async fn run_get_system_stats(
     let cmd = "echo '=== LOAD ===' && (cat /proc/loadavg 2>/dev/null || uptime) && echo '=== MEM ===' && (cat /proc/meminfo 2>/dev/null || free -k 2>/dev/null) && echo '=== DISK ===' && df -kP /";
     let log_path = make_temp_log_path(host);
     let (stdout, stderr, exit_code) = pool
-        .execute_command(host, cmd, true, 5, log_path.clone())
+        .execute_command(
+            host,
+            cmd,
+            true,
+            5,
+            log_path.clone(),
+            Duration::from_secs(15),
+        )
         .await?;
     let _ = std::fs::remove_file(&log_path);
     if exit_code != 0 {
@@ -36,7 +43,14 @@ pub async fn run_list_ports(
     let cmd = "ss -tulpn 2>/dev/null || netstat -tulpn 2>/dev/null || cat /proc/net/tcp";
     let log_path = make_temp_log_path(host);
     let (stdout, stderr, exit_code) = pool
-        .execute_command(host, cmd, true, 5, log_path.clone())
+        .execute_command(
+            host,
+            cmd,
+            true,
+            5,
+            log_path.clone(),
+            Duration::from_secs(15),
+        )
         .await?;
     let _ = std::fs::remove_file(&log_path);
     if exit_code != 0 {
@@ -60,6 +74,7 @@ pub async fn run_run_command(
     background: bool,
     abbreviate: bool,
     max_lines: usize,
+    timeout_secs: u64,
 ) -> Result<serde_json::Value> {
     let sessions_dir = home::home_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
@@ -76,6 +91,7 @@ pub async fn run_run_command(
     let rand_hex = format!("{:04x}", nano_rand & 0xffff);
     let log_file_name = format!("job_{}_{}_{}.log", now_str, host, rand_hex);
     let log_path = sessions_dir.join(&log_file_name);
+    let timeout = Duration::from_secs(timeout_secs);
 
     if background {
         let pool_clone = pool.clone();
@@ -90,6 +106,7 @@ pub async fn run_run_command(
                     quiet,
                     progress_interval_secs,
                     log_path_clone,
+                    timeout,
                 )
                 .await;
         });
@@ -105,7 +122,14 @@ pub async fn run_run_command(
     }
 
     let (stdout, stderr, exit_code) = pool
-        .execute_command(host, command, quiet, progress_interval_secs, log_path)
+        .execute_command(
+            host,
+            command,
+            quiet,
+            progress_interval_secs,
+            log_path,
+            timeout,
+        )
         .await?;
     let stdout_final = if abbreviate {
         abbreviate_output(&stdout, max_lines)
@@ -134,6 +158,7 @@ pub async fn run_search_processes(
             true,
             5,
             log_path.clone(),
+            Duration::from_secs(15),
         )
         .await?;
     let _ = std::fs::remove_file(&log_path);
@@ -203,7 +228,14 @@ pub async fn run_tail_log(
     );
     let log_path = make_temp_log_path(host);
     let (stdout, stderr, exit_code) = pool
-        .execute_command(host, &command, true, 5, log_path.clone())
+        .execute_command(
+            host,
+            &command,
+            true,
+            5,
+            log_path.clone(),
+            Duration::from_secs(15),
+        )
         .await?;
     let _ = std::fs::remove_file(&log_path);
     if exit_code != 0 {
@@ -228,7 +260,14 @@ pub async fn run_tail_container_logs(
     );
     let log_path = make_temp_log_path(host);
     let (stdout, stderr, exit_code) = pool
-        .execute_command(host, &command, true, 5, log_path.clone())
+        .execute_command(
+            host,
+            &command,
+            true,
+            5,
+            log_path.clone(),
+            Duration::from_secs(15),
+        )
         .await?;
     let _ = std::fs::remove_file(&log_path);
     let text = if exit_code != 0 { stderr } else { stdout };
@@ -253,25 +292,36 @@ pub async fn run_wait_for_log_pattern(
         )
     };
 
+    let timeout = Duration::from_secs(timeout_secs);
     let handle = pool.get_connection(host).await?;
-    let _guard = pool.start_operation(host).await;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let session_id = format!("wait_{}_{:04x}", host, nanos & 0xffff);
+    let _guard = pool
+        .start_command_operation(host, &cmd, session_id.clone(), timeout)
+        .await;
     let mut channel = handle
         .channel_open_session()
         .await
         .context("Failed to open SSH channel")?;
 
+    let wrapped_cmd = crate::ssh_pool::wrap_command_with_pgid(&cmd);
     channel
-        .exec(true, cmd)
+        .exec(true, wrapped_cmd.as_str())
         .await
         .context("Failed to execute tail/log command")?;
 
     let mut stdout_buf = Vec::new();
+    let mut sentinel_buf = Vec::new();
+    let mut sentinel_resolved = false;
+    let mut remote_pid: Option<u32> = None;
     let mut matched_line = None;
     let mut error_msg = None;
 
     let sleep_duration = Duration::from_millis(50);
     let start_time = std::time::Instant::now();
-    let timeout = Duration::from_secs(timeout_secs);
 
     loop {
         if start_time.elapsed() >= timeout {
@@ -284,10 +334,31 @@ pub async fn run_wait_for_log_pattern(
 
         match tokio::time::timeout(sleep_duration, channel.wait()).await {
             Ok(Some(russh::ChannelMsg::Data { data })) => {
-                stdout_buf.extend_from_slice(&data);
-                if let Some(matched) = find_matched_line(&mut stdout_buf, &re) {
-                    matched_line = Some(matched);
-                    break;
+                if !sentinel_resolved {
+                    sentinel_buf.extend_from_slice(&data);
+                    if let Some((parsed_pid, remaining)) =
+                        crate::ssh_pool::try_extract_sentinel_pid(&sentinel_buf)
+                    {
+                        sentinel_resolved = true;
+                        sentinel_buf.clear();
+                        if let Some(pid) = parsed_pid {
+                            remote_pid = Some(pid);
+                            pool.update_running_command_pid(&session_id, pid).await;
+                        }
+                        if !remaining.is_empty() {
+                            stdout_buf.extend_from_slice(&remaining);
+                            if let Some(matched) = find_matched_line(&mut stdout_buf, &re) {
+                                matched_line = Some(matched);
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    stdout_buf.extend_from_slice(&data);
+                    if let Some(matched) = find_matched_line(&mut stdout_buf, &re) {
+                        matched_line = Some(matched);
+                        break;
+                    }
                 }
             }
             Ok(Some(russh::ChannelMsg::ExtendedData { data, ext })) => {
@@ -322,13 +393,21 @@ pub async fn run_wait_for_log_pattern(
         }
     }
 
+    let kill_outcome = if let Some(pid) = remote_pid {
+        Some(ConnectionPool::kill_remote_process_group(&handle, host, pid).await)
+    } else {
+        None
+    };
     let _ = channel.close().await;
 
     if let Some(line) = matched_line {
         Ok(serde_json::json!(line))
     } else {
-        let err =
+        let mut err =
             error_msg.unwrap_or_else(|| "Connection closed before pattern was matched".to_string());
+        if let Some(outcome) = kill_outcome {
+            err.push_str(&format!(" ({})", outcome));
+        }
         anyhow::bail!("{}", err);
     }
 }

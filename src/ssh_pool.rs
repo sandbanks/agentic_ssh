@@ -608,6 +608,30 @@ pub fn get_pool_status_path() -> PathBuf {
     PathBuf::from("pool_status.json")
 }
 
+/// Sentinel prefix emitted on stdout by the remote POSIX wrapper to report its PID/PGID.
+pub const AGENTIC_PID_SENTINEL_PREFIX: &str = "__AGENTIC_PID:";
+
+/// Tracks an in-flight command executing on a remote SSH host.
+#[derive(Debug, Clone)]
+pub struct RunningCommand {
+    pub host: String,
+    pub command: String,
+    pub remote_pid: Option<u32>,
+    pub session_id: String,
+    pub started_at: Instant,
+    pub timeout: Duration,
+}
+
+/// Serializable snapshot of a running command for the pool status JSON file and TUI.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct RunningCommandStatus {
+    pub command: String,
+    pub remote_pid: Option<u32>,
+    pub session_id: String,
+    pub elapsed_secs: u64,
+    pub timeout_secs: u64,
+}
+
 pub struct SshConnection {
     pub handle: Arc<Handle<ClientHandler>>,
     pub last_used: Instant,
@@ -629,45 +653,303 @@ impl SshConnection {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct ConnectionStatus {
     pub host: String,
     pub last_used_timestamp: u64,
     pub idle_timeout_secs: u64,
     #[serde(default)]
     pub status: String,
+    #[serde(default)]
+    pub running_commands: Vec<RunningCommandStatus>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct ProcessPoolSnapshot {
+    pub pid: u32,
+    pub updated_at_unix: u64,
+    pub connections: Vec<ConnectionStatus>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Default)]
+pub struct MultiProcessPoolStatus {
+    pub processes: HashMap<String, ProcessPoolSnapshot>,
+}
+
+fn current_unix_timestamp() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+fn is_pid_alive(pid: u32) -> bool {
+    if pid == std::process::id() {
+        return true;
+    }
+    std::process::Command::new("kill")
+        .args(["-0", &pid.to_string()])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+fn read_multi_process_pool_status(path: &Path) -> Option<MultiProcessPoolStatus> {
+    let content = std::fs::read_to_string(path).ok()?;
+    if let Ok(multi) = serde_json::from_str::<MultiProcessPoolStatus>(&content) {
+        return Some(multi);
+    }
+    // Backward compatibility if an older process wrote a bare Vec<ConnectionStatus>
+    if let Ok(legacy) = serde_json::from_str::<Vec<ConnectionStatus>>(&content) {
+        let mut processes = HashMap::new();
+        processes.insert(
+            "0".to_string(),
+            ProcessPoolSnapshot {
+                pid: 0,
+                updated_at_unix: current_unix_timestamp(),
+                connections: legacy,
+            },
+        );
+        return Some(MultiProcessPoolStatus { processes });
+    }
+    None
+}
+
+/// Merges connection statuses across multiple active `agentic_ssh` processes.
+pub fn merge_connection_statuses(
+    snapshots: impl IntoIterator<Item = Vec<ConnectionStatus>>,
+) -> Vec<ConnectionStatus> {
+    let mut merged: HashMap<String, ConnectionStatus> = HashMap::new();
+    for conn_list in snapshots {
+        for conn in conn_list {
+            let entry = merged
+                .entry(conn.host.clone())
+                .or_insert_with(|| ConnectionStatus {
+                    host: conn.host.clone(),
+                    last_used_timestamp: conn.last_used_timestamp,
+                    idle_timeout_secs: conn.idle_timeout_secs,
+                    status: conn.status.clone(),
+                    running_commands: Vec::new(),
+                });
+
+            if conn.last_used_timestamp > entry.last_used_timestamp {
+                entry.last_used_timestamp = conn.last_used_timestamp;
+            }
+            if conn.idle_timeout_secs > entry.idle_timeout_secs {
+                entry.idle_timeout_secs = conn.idle_timeout_secs;
+            }
+            if conn.status == "Executing" || !conn.running_commands.is_empty() {
+                entry.status = "Executing".to_string();
+            }
+            for rc in conn.running_commands {
+                if !entry
+                    .running_commands
+                    .iter()
+                    .any(|existing| existing.session_id == rc.session_id)
+                {
+                    entry.running_commands.push(rc);
+                }
+            }
+        }
+    }
+
+    let mut result: Vec<ConnectionStatus> = merged
+        .into_values()
+        .map(|mut c| {
+            c.running_commands
+                .sort_by(|a, b| a.session_id.cmp(&b.session_id));
+            c
+        })
+        .collect();
+    result.sort_by(|a, b| a.host.cmp(&b.host));
+    result
 }
 
 pub fn load_connection_statuses(path: &Path) -> Option<Vec<ConnectionStatus>> {
-    std::fs::File::open(path)
-        .ok()
-        .and_then(|file| serde_json::from_reader(file).ok())
+    let multi = read_multi_process_pool_status(path)?;
+    let now_unix = current_unix_timestamp();
+    let live_snapshots = multi.processes.into_values().filter_map(|snap| {
+        let is_fresh = now_unix.saturating_sub(snap.updated_at_unix) < 15;
+        let is_alive = snap.pid == 0 || is_pid_alive(snap.pid);
+        if is_fresh && is_alive {
+            Some(snap.connections)
+        } else if is_fresh {
+            // Short-lived CLI invocation (`agentic_ssh json ...`) that already exited:
+            // preserve recent host activity (for 15s) as closed/idle without stale Executing state.
+            let settled = snap
+                .connections
+                .into_iter()
+                .map(|mut c| {
+                    c.status = "Active".to_string();
+                    c.running_commands.clear();
+                    c
+                })
+                .collect();
+            Some(settled)
+        } else {
+            None
+        }
+    });
+    Some(merge_connection_statuses(live_snapshots))
 }
 
 pub fn is_daemon_active(path: &Path) -> bool {
     std::fs::metadata(path)
         .ok()
         .and_then(|m| m.modified().ok())
-        .and_then(|t| t.elapsed().ok())
-        .map(|e| e.as_secs() < 15)
+        .map(|t| t.elapsed().unwrap_or(Duration::ZERO).as_secs() < 15)
         .unwrap_or(false)
+}
+
+fn write_pool_status_snapshot(
+    map: &HashMap<String, SshConnection>,
+    cmds: &HashMap<String, RunningCommand>,
+    path: &Path,
+) {
+    let now = Instant::now();
+    let now_unix = current_unix_timestamp();
+
+    let statuses: Vec<ConnectionStatus> = map
+        .iter()
+        .map(|(h, c)| {
+            let (last_used_unix, status_str) = c.get_status_fields(now, now_unix);
+            let mut running_commands: Vec<RunningCommandStatus> = cmds
+                .values()
+                .filter(|rc| &rc.host == h)
+                .map(|rc| RunningCommandStatus {
+                    command: rc.command.clone(),
+                    remote_pid: rc.remote_pid,
+                    session_id: rc.session_id.clone(),
+                    elapsed_secs: now.duration_since(rc.started_at).as_secs(),
+                    timeout_secs: rc.timeout.as_secs(),
+                })
+                .collect();
+            running_commands.sort_by(|a, b| a.session_id.cmp(&b.session_id));
+
+            ConnectionStatus {
+                host: h.clone(),
+                last_used_timestamp: last_used_unix,
+                idle_timeout_secs: c.idle_timeout_secs,
+                status: status_str,
+                running_commands,
+            }
+        })
+        .collect();
+
+    let pid = std::process::id();
+    let mut multi = read_multi_process_pool_status(path).unwrap_or_default();
+
+    // Prune stale entries (>15s). For dead PIDs that finished <15s ago (e.g. CLI `agentic_ssh json`),
+    // clear their `running_commands` and mark their status `"Active"` so recent CLI runs remain visible briefly.
+    multi.processes.retain(|k, snap| {
+        if k == "0" {
+            return false;
+        }
+        let is_fresh = now_unix.saturating_sub(snap.updated_at_unix) < 15;
+        if !is_fresh {
+            return false;
+        }
+        if !is_pid_alive(snap.pid) {
+            for c in &mut snap.connections {
+                c.status = "Active".to_string();
+                c.running_commands.clear();
+            }
+            return !snap.connections.is_empty();
+        }
+        true
+    });
+
+    multi.processes.insert(
+        pid.to_string(),
+        ProcessPoolSnapshot {
+            pid,
+            updated_at_unix: now_unix,
+            connections: statuses,
+        },
+    );
+
+    if let Some(parent) = path.parent() {
+        let tmp_path = parent.join(format!(
+            ".{}.tmp.{}",
+            path.file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("pool_status.json"),
+            pid
+        ));
+        if let Ok(file) = std::fs::File::create(&tmp_path)
+            && serde_json::to_writer_pretty(file, &multi).is_ok()
+        {
+            let _ = std::fs::rename(&tmp_path, path);
+            return;
+        }
+    }
+
+    if let Ok(file) = std::fs::File::create(path) {
+        let _ = serde_json::to_writer_pretty(file, &multi);
+    }
+}
+
+/// Wraps a user command in a POSIX shell preamble that creates a new process group
+/// (via `setsid` on Linux, `perl -e 'setpgrp(0, 0); ...'` on macOS/BSD, or plain `sh -c` fallback)
+/// and emits `AGENTIC_PID_SENTINEL_PREFIX` followed by the remote PID/PGID on its first stdout line.
+///
+/// Requires a POSIX-compliant `/bin/sh` or `bash` on the remote host.
+pub fn wrap_command_with_pgid(command: &str) -> String {
+    let inner = format!("echo \"{}$$\"; {}", AGENTIC_PID_SENTINEL_PREFIX, command);
+    let escaped_inner = shell_escape(&inner);
+    format!(
+        "if command -v setsid >/dev/null 2>&1; then exec setsid sh -c {0}; elif command -v perl >/dev/null 2>&1; then exec perl -e 'setpgrp(0, 0); exec @ARGV' sh -c {0}; else sh -c {0}; fi",
+        escaped_inner
+    )
+}
+
+/// Inspects a buffered first line of stdout for `AGENTIC_PID_SENTINEL_PREFIX`.
+/// Returns `Some((Some(pid), remaining_bytes))` if a valid sentinel line was stripped,
+/// `Some((None, remaining_bytes))` if a complete first line was received without a valid sentinel,
+/// or `None` if a newline has not been received yet (and buffer is within reasonable bounds).
+pub fn try_extract_sentinel_pid(buf: &[u8]) -> Option<(Option<u32>, Vec<u8>)> {
+    if let Some(pos) = buf.iter().position(|&b| b == b'\n') {
+        let first_line = &buf[..pos];
+        let rest = &buf[pos + 1..];
+        let line_str = String::from_utf8_lossy(first_line);
+        let trimmed = line_str.trim_end_matches('\r');
+        if let Some(pid_str) = trimmed.strip_prefix(AGENTIC_PID_SENTINEL_PREFIX)
+            && let Ok(pid) = pid_str.trim().parse::<u32>()
+        {
+            return Some((Some(pid), rest.to_vec()));
+        }
+        // First line did not contain a valid sentinel; preserve all bytes including the first line
+        return Some((None, buf.to_vec()));
+    }
+    // If more than 256 bytes arrived without a newline, it cannot be our short sentinel line
+    if buf.len() > 256 {
+        return Some((None, buf.to_vec()));
+    }
+    None
 }
 
 pub struct ConnectionPool {
     connections: Arc<Mutex<HashMap<String, SshConnection>>>,
+    running_commands: Arc<Mutex<HashMap<String, RunningCommand>>>,
     idle_timeout: Duration,
 }
 
 pub struct ActiveOperationGuard {
     connections: Arc<Mutex<HashMap<String, SshConnection>>>,
+    running_commands: Arc<Mutex<HashMap<String, RunningCommand>>>,
     host: String,
+    session_id: Option<String>,
     pool_status_path: PathBuf,
 }
 
 impl Drop for ActiveOperationGuard {
     fn drop(&mut self) {
         let connections = Arc::clone(&self.connections);
+        let running_commands = Arc::clone(&self.running_commands);
         let host = self.host.clone();
+        let session_id = self.session_id.take();
         let path = self.pool_status_path.clone();
         tokio::spawn(async move {
             let mut map = connections.lock().await;
@@ -677,28 +959,11 @@ impl Drop for ActiveOperationGuard {
                     conn.last_used = Instant::now();
                 }
             }
-            // Save status
-            let now = Instant::now();
-            let now_unix = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
-
-            let statuses: Vec<ConnectionStatus> = map
-                .iter()
-                .map(|(h, c)| {
-                    let (last_used_unix, status_str) = c.get_status_fields(now, now_unix);
-                    ConnectionStatus {
-                        host: h.clone(),
-                        last_used_timestamp: last_used_unix,
-                        idle_timeout_secs: c.idle_timeout_secs,
-                        status: status_str,
-                    }
-                })
-                .collect();
-            if let Ok(file) = std::fs::File::create(path) {
-                let _ = serde_json::to_writer_pretty(file, &statuses);
+            let mut cmds = running_commands.lock().await;
+            if let Some(sid) = session_id {
+                cmds.remove(&sid);
             }
+            write_pool_status_snapshot(&map, &cmds, &path);
         });
     }
 }
@@ -707,14 +972,18 @@ impl ConnectionPool {
     pub fn new(idle_timeout: Duration) -> Self {
         let connections: Arc<Mutex<HashMap<String, SshConnection>>> =
             Arc::new(Mutex::new(HashMap::new()));
+        let running_commands: Arc<Mutex<HashMap<String, RunningCommand>>> =
+            Arc::new(Mutex::new(HashMap::new()));
 
         let pool = Self {
             connections: Arc::clone(&connections),
+            running_commands: Arc::clone(&running_commands),
             idle_timeout,
         };
 
         // Start background cleaner task
         let pool_clone = Arc::clone(&connections);
+        let cmds_clone = Arc::clone(&running_commands);
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(Duration::from_secs(1)).await;
@@ -731,26 +1000,8 @@ impl ConnectionPool {
                     }
                 });
 
-                let now_unix = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs();
-
-                let statuses: Vec<ConnectionStatus> = map
-                    .iter()
-                    .map(|(host, conn)| {
-                        let (last_used_unix, status_str) = conn.get_status_fields(now, now_unix);
-                        ConnectionStatus {
-                            host: host.clone(),
-                            last_used_timestamp: last_used_unix,
-                            idle_timeout_secs: idle_timeout.as_secs(),
-                            status: status_str,
-                        }
-                    })
-                    .collect();
-                if let Ok(file) = std::fs::File::create(get_pool_status_path()) {
-                    let _ = serde_json::to_writer_pretty(file, &statuses);
-                }
+                let cmds = cmds_clone.lock().await;
+                write_pool_status_snapshot(&map, &cmds, &get_pool_status_path());
             }
         });
 
@@ -759,42 +1010,62 @@ impl ConnectionPool {
 
     async fn save_status(&self) {
         let map = self.connections.lock().await;
-        let now = Instant::now();
-        let now_unix = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-
-        let statuses: Vec<ConnectionStatus> = map
-            .iter()
-            .map(|(host, conn)| {
-                let (last_used_unix, status_str) = conn.get_status_fields(now, now_unix);
-                ConnectionStatus {
-                    host: host.clone(),
-                    last_used_timestamp: last_used_unix,
-                    idle_timeout_secs: self.idle_timeout.as_secs(),
-                    status: status_str,
-                }
-            })
-            .collect();
-        if let Ok(file) = std::fs::File::create(get_pool_status_path()) {
-            let _ = serde_json::to_writer_pretty(file, &statuses);
-        }
+        let cmds = self.running_commands.lock().await;
+        write_pool_status_snapshot(&map, &cmds, &get_pool_status_path());
     }
 
-    pub async fn start_operation(&self, host: &str) -> ActiveOperationGuard {
-        let mut map = self.connections.lock().await;
-        if let Some(conn) = map.get_mut(host) {
-            conn.active_operations += 1;
+    pub async fn start_command_operation(
+        &self,
+        host: &str,
+        command: &str,
+        session_id: String,
+        timeout: Duration,
+    ) -> ActiveOperationGuard {
+        {
+            let mut map = self.connections.lock().await;
+            if let Some(conn) = map.get_mut(host) {
+                conn.active_operations += 1;
+            }
         }
-        drop(map);
+        {
+            let mut cmds = self.running_commands.lock().await;
+            cmds.insert(
+                session_id.clone(),
+                RunningCommand {
+                    host: host.to_string(),
+                    command: command.to_string(),
+                    remote_pid: None,
+                    session_id: session_id.clone(),
+                    started_at: Instant::now(),
+                    timeout,
+                },
+            );
+        }
         self.save_status().await;
 
         ActiveOperationGuard {
             connections: Arc::clone(&self.connections),
+            running_commands: Arc::clone(&self.running_commands),
             host: host.to_string(),
+            session_id: Some(session_id),
             pool_status_path: get_pool_status_path(),
         }
+    }
+
+    pub async fn update_running_command_pid(&self, session_id: &str, pid: u32) {
+        {
+            let mut cmds = self.running_commands.lock().await;
+            if let Some(cmd) = cmds.get_mut(session_id) {
+                cmd.remote_pid = Some(pid);
+            }
+        }
+        self.save_status().await;
+    }
+
+    #[cfg(test)]
+    pub async fn get_running_commands(&self) -> Vec<RunningCommand> {
+        let cmds = self.running_commands.lock().await;
+        cmds.values().cloned().collect()
     }
 
     /// Gets or creates a connection to the specified host.
@@ -1050,7 +1321,79 @@ impl ConnectionPool {
             })?
     }
 
-    /// Runs a command on a host, updating the last used time.
+    /// Best-effort kills a remote process group (and direct children) on an open SSH connection.
+    /// Sends SIGTERM first, polls every 100ms for up to 2 seconds for graceful exit, and escalates
+    /// to SIGKILL only if still alive. Returns a human-readable outcome summary for logging.
+    pub async fn kill_remote_process_group(
+        handle: &Arc<Handle<ClientHandler>>,
+        host: &str,
+        pgid: u32,
+    ) -> String {
+        let kill_cmd = format!(
+            "kill -TERM -{0} 2>/dev/null; pkill -TERM -P {0} 2>/dev/null; kill -TERM {0} 2>/dev/null; \
+             i=0; while [ $i -lt 20 ]; do \
+               if ! kill -0 -{0} 2>/dev/null && ! kill -0 {0} 2>/dev/null; then echo \"TERMINATED_SIGTERM\"; exit 0; fi; \
+               sleep 0.1; i=$((i + 1)); \
+             done; \
+             kill -KILL -{0} 2>/dev/null; pkill -KILL -P {0} 2>/dev/null; kill -KILL {0} 2>/dev/null; \
+             sleep 0.1; \
+             if ! kill -0 -{0} 2>/dev/null && ! kill -0 {0} 2>/dev/null; then echo \"KILLED_SIGKILL\"; else echo \"STILL_ALIVE\"; fi",
+            pgid
+        );
+        match tokio::time::timeout(Duration::from_secs(5), async {
+            let mut kill_chan = handle.channel_open_session().await?;
+            kill_chan.exec(true, kill_cmd.as_str()).await?;
+            let mut out = Vec::new();
+            while let Some(msg) = kill_chan.wait().await {
+                if let russh::ChannelMsg::Data { data } = msg {
+                    out.extend_from_slice(&data);
+                }
+            }
+            let _ = kill_chan.close().await;
+            Ok::<String, anyhow::Error>(String::from_utf8_lossy(&out).trim().to_string())
+        })
+        .await
+        {
+            Ok(Ok(status_token)) => {
+                let summary = match status_token.as_str() {
+                    "TERMINATED_SIGTERM" => format!(
+                        "terminated remote process group {} cleanly via SIGTERM",
+                        pgid
+                    ),
+                    "KILLED_SIGKILL" => format!(
+                        "escalated to SIGKILL after 2s grace period and killed remote process group {}",
+                        pgid
+                    ),
+                    "STILL_ALIVE" => format!(
+                        "sent SIGTERM and SIGKILL to remote process group {}, but process still appears alive",
+                        pgid
+                    ),
+                    _ => format!("sent SIGTERM/SIGKILL to remote process group {}", pgid),
+                };
+                pool_eprintln!("[agentic_ssh] -> {} on {}", summary, host);
+                summary
+            }
+            Ok(Err(e)) => {
+                let summary = format!(
+                    "failed to execute kill command for remote PGID/PID {} ({})",
+                    pgid, e
+                );
+                pool_eprintln!("[agentic_ssh] -> Warning: {} on {}", summary, host);
+                summary
+            }
+            Err(_) => {
+                let summary = format!(
+                    "timed out waiting for kill confirmation of remote PGID/PID {}",
+                    pgid
+                );
+                pool_eprintln!("[agentic_ssh] -> Warning: {} on {}", summary, host);
+                summary
+            }
+        }
+    }
+
+    /// Runs a command on a host, updating the last used time, tracking the command in the
+    /// in-memory `RunningCommand` registry, and killing the remote process group if `timeout` expires.
     pub async fn execute_command(
         &self,
         host: &str,
@@ -1058,9 +1401,24 @@ impl ConnectionPool {
         quiet: bool,
         progress_interval_secs: u64,
         log_path: PathBuf,
+        timeout: Duration,
     ) -> Result<(String, String, u32)> {
         let handle = self.get_connection(host).await?;
-        let _guard = self.start_operation(host).await;
+        let session_id = log_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| {
+                let nanos = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos();
+                format!("cmd_{}_{:04x}", host, nanos & 0xffff)
+            });
+
+        let _guard = self
+            .start_command_operation(host, command, session_id.clone(), timeout)
+            .await;
 
         pool_eprintln!("Executing command on {}: {:?}", host, command);
         let mut channel = handle
@@ -1068,14 +1426,18 @@ impl ConnectionPool {
             .await
             .context("Failed to open SSH channel")?;
 
+        let wrapped_cmd = wrap_command_with_pgid(command);
         channel
-            .exec(true, command)
+            .exec(true, wrapped_cmd.as_str())
             .await
             .context("Failed to request command execution")?;
 
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();
         let mut exit_code = 0;
+        let mut sentinel_buf = Vec::new();
+        let mut sentinel_resolved = false;
+        let mut remote_pid: Option<u32> = None;
 
         // Open progress log file
         use tokio::io::AsyncWriteExt;
@@ -1100,20 +1462,49 @@ impl ConnectionPool {
         } else {
             start_time + Duration::from_secs(3600 * 24 * 365 * 100)
         };
+        let timeout_deadline = tokio::time::Instant::from_std(start_time + timeout);
 
         loop {
             tokio::select! {
                 msg = channel.wait() => {
                     match msg {
                         Some(russh::ChannelMsg::Data { data }) => {
-                            stdout.extend_from_slice(&data);
-                            if !quiet {
-                                let _ = tokio::io::stderr().write_all(&data).await;
-                                let _ = tokio::io::stderr().flush().await;
-                            }
-                            if let Some(ref mut f) = log_file {
-                                let _ = f.write_all(&data).await;
-                                let _ = f.flush().await;
+                            if !sentinel_resolved {
+                                sentinel_buf.extend_from_slice(&data);
+                                if let Some((parsed_pid, remaining)) = try_extract_sentinel_pid(&sentinel_buf) {
+                                    sentinel_resolved = true;
+                                    sentinel_buf.clear();
+                                    if let Some(pid) = parsed_pid {
+                                        remote_pid = Some(pid);
+                                        self.update_running_command_pid(&session_id, pid).await;
+                                    } else {
+                                        pool_eprintln!(
+                                            "[agentic_ssh] -> Warning: POSIX PID sentinel not detected on host '{}' (non-POSIX shell?); skipping process group tracking.",
+                                            host
+                                        );
+                                    }
+                                    if !remaining.is_empty() {
+                                        stdout.extend_from_slice(&remaining);
+                                        if !quiet {
+                                            let _ = tokio::io::stderr().write_all(&remaining).await;
+                                            let _ = tokio::io::stderr().flush().await;
+                                        }
+                                        if let Some(ref mut f) = log_file {
+                                            let _ = f.write_all(&remaining).await;
+                                            let _ = f.flush().await;
+                                        }
+                                    }
+                                }
+                            } else {
+                                stdout.extend_from_slice(&data);
+                                if !quiet {
+                                    let _ = tokio::io::stderr().write_all(&data).await;
+                                    let _ = tokio::io::stderr().flush().await;
+                                }
+                                if let Some(ref mut f) = log_file {
+                                    let _ = f.write_all(&data).await;
+                                    let _ = f.flush().await;
+                                }
                             }
                         }
                         Some(russh::ChannelMsg::ExtendedData { data, ext }) => {
@@ -1153,6 +1544,62 @@ impl ConnectionPool {
                     }
                     next_tick = Instant::now() + Duration::from_secs(progress_interval_secs);
                 }
+                _ = tokio::time::sleep_until(timeout_deadline) => {
+                    let timeout_secs = timeout.as_secs();
+                    let kill_note = if let Some(pid) = remote_pid {
+                        let attempt_msg = format!(
+                            "\n[agentic_ssh] -> Command on '{}' timed out after {} seconds. Terminating remote process group (PGID/PID {})...\n",
+                            host, timeout_secs, pid
+                        );
+                        pool_eprintln!("{}", attempt_msg.trim_end());
+                        if let Some(ref mut f) = log_file {
+                            let _ = f.write_all(attempt_msg.as_bytes()).await;
+                            let _ = f.flush().await;
+                        }
+                        let outcome = Self::kill_remote_process_group(&handle, host, pid).await;
+                        let outcome_msg = format!("[agentic_ssh] -> Kill result: {}\n", outcome);
+                        if let Some(ref mut f) = log_file {
+                            let _ = f.write_all(outcome_msg.as_bytes()).await;
+                            let _ = f.flush().await;
+                        }
+                        format!(" ({})", outcome)
+                    } else {
+                        let msg = format!(
+                            "\n[agentic_ssh] -> Warning: Command on '{}' timed out after {} seconds, but remote PID sentinel was not detected; skipping group-kill (best-effort channel close only).\n",
+                            host, timeout_secs
+                        );
+                        pool_eprintln!("{}", msg.trim_end());
+                        if let Some(ref mut f) = log_file {
+                            let _ = f.write_all(msg.as_bytes()).await;
+                            let _ = f.flush().await;
+                        }
+                        String::new()
+                    };
+                    let _ = channel.close().await;
+                    return Err(anyhow!(
+                        "Execution on host '{}' timed out after {} seconds{}",
+                        host,
+                        timeout_secs,
+                        kill_note
+                    ));
+                }
+            }
+        }
+
+        // Flush any remaining bytes if stream ended before a newline was seen
+        if !sentinel_resolved && !sentinel_buf.is_empty() {
+            pool_eprintln!(
+                "[agentic_ssh] -> Warning: POSIX PID sentinel not detected on host '{}' before stream close; skipping process group tracking.",
+                host
+            );
+            stdout.extend_from_slice(&sentinel_buf);
+            if !quiet {
+                let _ = tokio::io::stderr().write_all(&sentinel_buf).await;
+                let _ = tokio::io::stderr().flush().await;
+            }
+            if let Some(ref mut f) = log_file {
+                let _ = f.write_all(&sentinel_buf).await;
+                let _ = f.flush().await;
             }
         }
 
@@ -1180,6 +1627,7 @@ mod tests {
                 true,
                 5,
                 PathBuf::from("/tmp/test.log"),
+                Duration::from_secs(60),
             )
             .await
         {
@@ -1674,5 +2122,109 @@ mod tests {
         "#;
         let cfg = load_config_from_str(content).unwrap();
         assert_eq!(cfg.connect_timeout_secs, Some(5));
+    }
+
+    #[test]
+    fn test_wrap_command_with_pgid() {
+        let wrapped = wrap_command_with_pgid("echo 'hello' && sleep 5");
+        assert!(wrapped.contains("if command -v setsid"));
+        assert!(wrapped.contains(AGENTIC_PID_SENTINEL_PREFIX));
+        assert!(wrapped.contains(r#"echo '\''hello'\'' && sleep 5"#));
+    }
+
+    #[test]
+    fn test_try_extract_sentinel_pid() {
+        // Incomplete line -> None
+        assert_eq!(try_extract_sentinel_pid(b"__AGENTIC_PID:123"), None);
+
+        // Valid sentinel followed by command output
+        let input = b"__AGENTIC_PID:4812\nhello world\nsecond line";
+        let (pid, rest) = try_extract_sentinel_pid(input).unwrap();
+        assert_eq!(pid, Some(4812));
+        assert_eq!(rest, b"hello world\nsecond line");
+
+        // Valid sentinel with CRLF
+        let input_crlf = b"__AGENTIC_PID:99\r\nok\n";
+        let (pid2, rest2) = try_extract_sentinel_pid(input_crlf).unwrap();
+        assert_eq!(pid2, Some(99));
+        assert_eq!(rest2, b"ok\n");
+
+        // Non-POSIX shell output without sentinel -> preserves full output
+        let non_sentinel = b"normal first line\nsecond line\n";
+        let (pid3, rest3) = try_extract_sentinel_pid(non_sentinel).unwrap();
+        assert_eq!(pid3, None);
+        assert_eq!(rest3, non_sentinel.to_vec());
+    }
+
+    #[tokio::test]
+    async fn test_running_command_registry_lifecycle() {
+        let pool = ConnectionPool::new(Duration::from_secs(300));
+        assert!(pool.get_running_commands().await.is_empty());
+
+        let guard = pool
+            .start_command_operation(
+                "aruba",
+                "apt-get update && apt-get upgrade -y",
+                "job_test_aruba_0001".to_string(),
+                Duration::from_secs(60),
+            )
+            .await;
+
+        let cmds = pool.get_running_commands().await;
+        assert_eq!(cmds.len(), 1);
+        assert_eq!(cmds[0].host, "aruba");
+        assert_eq!(cmds[0].command, "apt-get update && apt-get upgrade -y");
+        assert_eq!(cmds[0].remote_pid, None);
+        assert_eq!(cmds[0].session_id, "job_test_aruba_0001");
+        assert_eq!(cmds[0].timeout, Duration::from_secs(60));
+
+        pool.update_running_command_pid("job_test_aruba_0001", 54321)
+            .await;
+        let cmds_updated = pool.get_running_commands().await;
+        assert_eq!(cmds_updated[0].remote_pid, Some(54321));
+
+        drop(guard);
+        // Allow the spawned drop cleanup task to run
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        assert!(pool.get_running_commands().await.is_empty());
+    }
+
+    #[test]
+    fn test_merge_connection_statuses_across_processes() {
+        let idle_daemon_snapshot: Vec<ConnectionStatus> = Vec::new();
+        let active_daemon_snapshot = vec![ConnectionStatus {
+            host: "cartman".to_string(),
+            last_used_timestamp: 1000,
+            idle_timeout_secs: 300,
+            status: "Executing".to_string(),
+            running_commands: vec![RunningCommandStatus {
+                command: "sleep 600".to_string(),
+                remote_pid: Some(135258),
+                session_id: "job_cartman_1".to_string(),
+                elapsed_secs: 5,
+                timeout_secs: 15,
+            }],
+        }];
+        let second_daemon_snapshot = vec![ConnectionStatus {
+            host: "cartman".to_string(),
+            last_used_timestamp: 950,
+            idle_timeout_secs: 300,
+            status: "Active".to_string(),
+            running_commands: Vec::new(),
+        }];
+
+        let merged = merge_connection_statuses([
+            idle_daemon_snapshot,
+            active_daemon_snapshot,
+            second_daemon_snapshot,
+        ]);
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].host, "cartman");
+        assert_eq!(merged[0].status, "Executing");
+        assert_eq!(merged[0].last_used_timestamp, 1000);
+        assert_eq!(merged[0].running_commands.len(), 1);
+        assert_eq!(merged[0].running_commands[0].command, "sleep 600");
+        assert_eq!(merged[0].running_commands[0].remote_pid, Some(135258));
     }
 }
