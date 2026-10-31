@@ -23,7 +23,7 @@ jobs:
           - name: Linux
             runner: ubuntu-latest
           - name: macOS
-            runner: macos-14
+            runner: macos-latest
           # - name: Windows
           #   runner: windows-latest
 
@@ -73,7 +73,7 @@ jobs:
           - name: Linux (ARM64)
             runner: ubuntu-24.04-arm
           - name: macOS (Apple Silicon)
-            runner: macos-14
+            runner: macos-latest
     steps:
       - uses: actions/checkout@v7
 
