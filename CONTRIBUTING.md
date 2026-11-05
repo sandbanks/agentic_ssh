@@ -136,3 +136,57 @@ Always follow this order so `.beads/issues.jsonl` is never left behind:
 5. git commit -m "..."   # Atomic commit containing code + issue updates
 6. git push              # Push to remote
 ```
+
+---
+
+## 🚀 Release Process
+
+Follow this end-to-end checklist when creating a new release (e.g. bumping `0.6.0` → `0.6.1`):
+
+### 1. Bump Version in Metadata
+- **`Cargo.toml`**: Update `version = "X.Y.Z"` under `[package]`.
+- **`server.json`**: Update `"version": "X.Y.Z"` and `"packages"[0]."version": "X.Y.Z"` (for MCP registry metadata).
+
+### 2. Update Locks & Nix Vendor Hash
+Update `Cargo.lock` and recompute the Nix derivation vendor hash in `flake.nix`:
+```bash
+cargo check
+just update-nix-hash
+```
+
+### 3. Run Full Verification Gate
+Ensure all tests, format checks, clippy lints, and the sandboxed Nix build pass:
+```bash
+just release-check
+```
+
+### 4. Sync Beads & Commit
+Sync the issue tracker state and make the version bump commit:
+```bash
+br sync --flush-only
+git add Cargo.toml Cargo.lock server.json flake.nix CONTRIBUTING.md .beads/issues.jsonl
+git commit -m "chore(release): bump version to X.Y.Z"
+git push origin main
+```
+
+### 5. Tag and Trigger Release Pipeline
+Tag the commit with an annotated tag `vX.Y.Z` and push it:
+```bash
+git tag -a vX.Y.Z -m "Release vX.Y.Z: <Summary>"
+git push origin vX.Y.Z
+```
+
+### 6. Create the GitHub Release
+Create the GitHub Release to trigger the automated CI release workflow:
+```bash
+gh release create vX.Y.Z --title "vX.Y.Z" --notes "<Release Notes>"
+# Or generate notes interactively / automatically:
+gh release create vX.Y.Z --title "vX.Y.Z" --generate-notes
+```
+
+#### What the Automated Release Workflow (`release.yml`) Handles
+Publishing the GitHub Release triggers `.github/workflows/release.yml`, which runs automatically:
+1. **Multi-Platform Binaries**: Builds release tarballs for `aarch64-macos`, `x86_64-linux`, and `aarch64-linux` and uploads them to the GitHub release.
+2. **Homebrew Bottles**: Packages bottles and automatically commits/pushes the updated formula to `sandbanks/homebrew-tap`.
+3. **Crates.io**: Publishes the package to [crates.io](https://crates.io/crates/agentic_ssh).
+4. **MCP Registry**: Stamps `server.json` and publishes official metadata to the Model Context Protocol registry using `mcp-publisher`.
