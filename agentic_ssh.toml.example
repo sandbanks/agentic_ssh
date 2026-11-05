@@ -48,3 +48,15 @@ description = "DANGEROUS: Forcefully reboots target environment via reboot comma
 command = ["sudo", "reboot"]
 allow_hosts = ["stan"]
 allow_shell = false
+
+# Debian / Ubuntu system package upgrade via detached systemd-run unit
+# Resilient to network drops and Tailscale restarts during package upgrades.
+[tools.safe_apt_upgrade]
+description = "Executes a non-interactive system package upgrade in a detached systemd unit resilient to network/Tailscale drops. Returns instantly with unit name."
+command = "sudo systemctl stop safe-apt-upgrade 2>/dev/null || true; sudo systemd-run --unit=safe-apt-upgrade --description='Safe System Package Upgrade' bash -c 'DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -yq && apt-get autoremove -yq'"
+allow_shell = true
+
+[tools.check_upgrade_status]
+description = "Checks the execution state of the background safe-apt-upgrade unit, recent journal logs, and whether a reboot is required."
+command = "systemctl is-active safe-apt-upgrade 2>/dev/null && echo 'STATUS: RUNNING' || { echo 'STATUS: INACTIVE / COMPLETED'; journalctl -u safe-apt-upgrade -n 15 --no-pager 2>/dev/null; [ -f /var/run/reboot-required ] && echo '⚠️ REBOOT REQUIRED' || echo '✅ No reboot required'; }"
+allow_shell = true
