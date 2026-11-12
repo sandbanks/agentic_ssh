@@ -32,7 +32,7 @@
           version = cargoToml.package.version;
           src = ./.;
 
-          cargoHash = "sha256-Ew8ISh6+FWogkmWbG2XfxFExUYYS+TGFMOEDhGrFeDM=";
+          cargoHash = "sha256-HnW22dFgIeOfRLRDuHzFYoOnFAdft8DRkgOHyovIdlk=";
 
           buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
             pkgs.apple-sdk_15
