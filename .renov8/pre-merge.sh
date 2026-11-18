@@ -2,7 +2,7 @@
 set -euo pipefail
 PR_NUMBER="$1"
 
-gh pr checkout "$PR_NUMBER"
+gh pr checkout "$PR_NUMBER" --force
 
 MERGEABLE=$(gh pr view "$PR_NUMBER" --json mergeable -q .mergeable)
 if [ "$MERGEABLE" = "CONFLICTING" ]; then
@@ -24,6 +24,5 @@ for i in $(seq 1 6); do
   gh pr checks "$PR_NUMBER" >/dev/null 2>&1 && break
   sleep 5
 done
-gh pr checks "$PR_NUMBER" --watch --fail-fast
 
-gh pr merge "$PR_NUMBER" --squash --delete-branch
+gh pr merge "$PR_NUMBER" --auto --squash --delete-branch
