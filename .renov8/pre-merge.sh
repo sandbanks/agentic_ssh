@@ -3,6 +3,13 @@ set -euo pipefail
 PR_NUMBER="$1"
 
 gh pr checkout "$PR_NUMBER"
+
+MERGEABLE=$(gh pr view "$PR_NUMBER" --json mergeable -q .mergeable)
+if [ "$MERGEABLE" = "CONFLICTING" ]; then
+  echo "ERROR: PR #$PR_NUMBER has merge conflicts with main (rebase needed)" >&2
+  exit 1
+fi
+
 just check
 just update-nix-hash
 just check-nix
