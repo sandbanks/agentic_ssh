@@ -25,4 +25,5 @@ for i in $(seq 1 6); do
   sleep 5
 done
 
-gh pr merge "$PR_NUMBER" --auto --squash --delete-branch
+gh pr merge "$PR_NUMBER" --squash --delete-branch 2>/dev/null \
+      || gh pr merge "$PR_NUMBER" --auto --squash --delete-branch
